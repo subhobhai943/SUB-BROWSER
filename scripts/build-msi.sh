@@ -4,44 +4,119 @@
 # compile happens on a Windows CI runner with WiX installed.
 #   WiX v3: choco install wixtoolset   -> candle.exe / light.exe
 #   WiX v5: dotnet tool install -g wix -> wix build
+#
+# v2.0.1: the old template shipped ONLY sub-browser.exe inside the MSI
+# (engine staging was never harvested -> 4 MB MSI that cannot browse).
+# We now generate a deterministic component fragment (sub-browser-engine-
+# files.wxs) that walks the staging tree and includes every engine exe/dll/
+# resource file. Release 42646711394 lesson: never ship a template that
+# silently omits the engine payload.
 set -euo pipefail
 
-VERSION="${VERSION:-2.0.0}"
+VERSION="${VERSION:-${VER:-2.0.0}}"
+# WiX Product/@Version accepts only integers 0-65534 per dotted field;
+# "0.0.0ci" would trip CNDL0108. Sanitize to core x.y.z[.build].
+VER_CORE="$(printf '%s' "$VERSION" | grep -Eo '[0-9]+(\.[0-9]+)*' | head -1)"
+[ -n "$VER_CORE" ] || VER_CORE="0.0.0"
 DIST_DIR="${DIST_DIR:-./dist}"
 STAGING="${1:-${STAGING:-staging-windows}}"
-GUID="${MSI_GUID:-}"           # stable upgrade GUID; generate once, commit it
-UPGRADE_CODE="${MSI_UPGRADE_CODE:-}"
+# Stable GUIDs so upgrades replace previous installs. These were generated
+# for SUB-BROWSER and MUST stay constant across releases (MajorUpgrade keys
+# on UpgradeCode). Override with MSI_GUID / MSI_UPGRADE_CODE only if you
+# intend to break the upgrade chain.
+GUID="${MSI_GUID:-{B7F4E3A1-9C2D-4E5F-8A6B-1D0C3E5F7A92}}"
+UPGRADE_CODE="${MSI_UPGRADE_CODE:-{5E8D2C4B-1A3F-4D7E-9B0C-F2E4D6A8C013}}"
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [WINDOWS_STAGING_DIR]
-  WINDOWS_STAGING_DIR  dir containing sub-browser.exe, *.dll, resources/
+  WINDOWS_STAGING_DIR  dir containing sub-browser.exe, servoshell.exe, *.dll,
+                       resources/ (the FULL runtime, not just the shell)
 Env: VERSION=$VERSION DIST_DIR=$DIST_DIR MSI_GUID MSI_UPGRADE_CODE
-Generates: \$DIST_DIR/sub-browser.wxs and prints the exact WiX commands.
+Generates: \$DIST_DIR/sub-browser.wxs (+ sub-browser-engine-files.wxs when the
+staging tree exists) and prints the exact WiX commands.
 EOF
 }
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then usage; exit 0; fi
 
-# GUIDs: placeholders must be replaced with real generated GUIDs.
-new_guid() { python3 -c 'import uuid;print("{"+str(uuid.uuid4()).upper()+"}")' 2>/dev/null || uuidgen; }
-: "${GUID:=$(new_guid)}"
-: "${UPGRADE_CODE:=$(new_guid)}"
-if [ -z "${MSI_GUID:-}" ] || [ -z "${MSI_UPGRADE_CODE:-}" ]; then
-  echo "NOTE: generated fresh GUIDs; for upgrades keep MSI_UPGRADE_CODE stable across releases:"
-  echo "      MSI_GUID=$GUID"
-  echo "      MSI_UPGRADE_CODE=$UPGRADE_CODE"
-fi
-
 mkdir -p "$DIST_DIR"
 WXS="$DIST_DIR/sub-browser.wxs"
-MAJOR="$(echo "$VERSION" | cut -d. -f1 | tr -dc '0-9')"; MINOR="$(echo "$VERSION" | cut -d. -f2 | tr -dc '0-9')"; PATCH="$(echo "$VERSION" | cut -d. -f3 | tr -dc '0-9')"
-# WiX Product/@Version must be x.x.x.x with integers 0-65534; strip junk like "ci" suffix
+FRAG="$DIST_DIR/sub-browser-engine-files.wxs"
+MAJOR="$(echo "$VER_CORE" | cut -d. -f1 | tr -dc '0-9')"; MINOR="$(echo "$VER_CORE" | cut -d. -f2 | tr -dc '0-9')"; PATCH="$(echo "$VER_CORE" | cut -d. -f3 | tr -dc '0-9')"
 MAJOR="${MAJOR:-0}"; MINOR="${MINOR:-0}"; PATCH="${PATCH:-0}"
+
+# --- engine payload fragment ------------------------------------------------
+# Deterministic harvest of every file under $STAGING except the main shell
+# exe (declared in the main .wxs as subbrowser.exe). Emits nested <Directory>
+# elements so resources/ keeps its layout under INSTALLFOLDER.
+FILE_COUNT=0
+san_id() { printf '%s' "$1" | sed 's/[^A-Za-z0-9_]/_/g'; }
+# Recursive emit: files at this level as Components; each subdir as a nested
+# <Directory>. Deterministic (LC_ALL=C sorted). Handles arbitrary depth
+# (the win zip nests servo/resources/named_resources, etc.).
+emit_dir() {
+  local path="$STAGING/$1"
+  local f d relpath winpath id dn relsub did
+  # files directly in this dir
+  while IFS= read -r f; do
+    relpath="${f#$STAGING/}"
+    case "$relpath" in
+      sub-browser.exe) continue ;;   # main exe lives in the primary component
+    esac
+    # Windows-style separators in Source paths (candle on MSVC handles
+    # backslashes unambiguously)
+    winpath="${relpath//\//\\}"
+    id="$(san_id "$relpath")"
+    echo "    <Component Id=\"Comp_$id\" Guid=\"generateGuid\"><File Id=\"File_$id\" Source=\"\$(var.SourceDir)\\\\$winpath\" KeyPath=\"yes\"/></Component>"
+    FILE_COUNT=$((FILE_COUNT+1))
+  done < <(find "$path" -maxdepth 1 -type f | LC_ALL=C sort)
+  # subdirectories (skip ones with no files: empty <Directory> ICE40's)
+  while IFS= read -r d; do
+    [ -n "$(find "$d" -type f -print -quit)" ] || continue
+    dn="$(basename "$d")"
+    relsub="${d#$STAGING/}"
+    did="$(san_id "$relsub")"
+    echo "    <Directory Id=\"EngineDir_$did\" Name=\"$dn\">"
+    emit_dir "$relsub"
+    echo "    </Directory>"
+  done < <(find "$path" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C sort)
+}
+gen_fragment() {
+  [ -d "$STAGING" ] || return 1
+  {
+    echo '<?xml version="1.0" encoding="UTF-8"?>'
+    echo '<!-- Auto-generated by build-msi.sh — do not edit. Harvested engine payload. -->'
+    echo '<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">'
+    echo '  <Fragment>'
+    echo '    <DirectoryRef Id="INSTALLFOLDER">'
+    emit_dir ""
+    echo '    </DirectoryRef>'
+    echo '    <ComponentGroup Id="ProductFilesExtra">'
+    while IFS= read -r f; do
+      cref_rel="${f#$STAGING/}"
+      case "$cref_rel" in sub-browser.exe) continue ;; esac
+      echo "      <ComponentRef Id=\"Comp_$(san_id "$cref_rel")\"/>"
+    done < <(find "$STAGING" -type f | LC_ALL=C sort)
+    echo '    </ComponentGroup>'
+    echo '  </Fragment>'
+    echo '</Wix>'
+  } > "$FRAG"
+  FILE_COUNT="$( (cd "$STAGING" && find . -type f ! -name sub-browser.exe | wc -l) || echo 0 )"
+  [ "$FILE_COUNT" -ge 1 ]
+}
+
+FRAG_REF=''
+if gen_fragment; then
+  echo "== generated engine fragment: $FRAG ($FILE_COUNT engine files)"
+  FRAG_REF='      <ComponentGroupRef Id="ProductFilesExtra"/>'
+else
+  echo "::warning::staging tree '$STAGING' not found/empty — MSI would ship WITHOUT the engine (shell cannot browse). CI must stage engine files before calling build-msi.sh." >&2
+fi
 
 cat > "$WXS" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SUB-BROWSER MSI — WiX v3-compatible source (v5 also accepts this form).
      Placeholders:
-       \$(var.SourceDir)   Windows staging dir (contains sub-browser.exe)
+       \$(var.SourceDir)   Windows staging dir (contains sub-browser.exe + engine)
        \$(var.Version)     $VERSION -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="$GUID"
@@ -59,6 +134,7 @@ cat > "$WXS" <<EOF
 
     <Feature Id="Complete" Title="SUB-BROWSER" Level="1" Display="expand" Absent="disallow">
       <ComponentGroupRef Id="ProductFiles"/>
+$FRAG_REF
       <ComponentRef Id="ApplicationShortcut"/>
       <ComponentRef Id="DesktopShortcut"/>
       <ComponentRef Id="AppDataDir"/>
@@ -85,16 +161,13 @@ cat > "$WXS" <<EOF
       </Directory>
     </Directory>
 
-    <!-- All exe/dll/resources: harvested at build time with
-         -ext WixToolset.Util.wixext (v3: candle -ext WixUtilExtension) -->
+    <!-- Engine exe/dll/resources are harvested into
+         sub-browser-engine-files.wxs (ComponentGroup ProductFilesExtra)
+         by gen_fragment() above and candle'd alongside this file. -->
     <ComponentGroup Id="ProductFiles" Directory="INSTALLFOLDER">
       <Component Id="MainExe" Guid="*">
         <File Id="subbrowser.exe" Source="\$(var.SourceDir)\\sub-browser.exe" KeyPath="yes"/>
       </Component>
-      <!-- CI agent: run heat for the rest:
-           heat dir "\$(var.SourceDir)" -gg -sfrag -srd -dr INSTALLFOLDER
-                -cg ProductFilesExtra -var var.SourceDir -o productfiles.wxs
-           then add <ComponentGroupRef Id="ProductFilesExtra"/> to Feature. -->
     </ComponentGroup>
 
     <ComponentGroup Id="Shortcuts">
@@ -128,6 +201,7 @@ EOF
 echo "== generated WiX source: $WXS"
 
 # --- runner detection -------------------------------------------------------
+WIX3=""; WIX5=""
 if command -v candle >/dev/null 2>&1 && command -v light >/dev/null 2>&1; then
   WIX3=1
 elif command -v wix >/dev/null 2>&1; then
@@ -148,33 +222,41 @@ EOF
   fi
 fi
 
+# candle/light argument sets (fragment compiled alongside the main wxs)
+wxs_args() {
+  if [ -f "$FRAG" ]; then printf ' "%s"' "$(basename "$WXS")" "$(basename "$FRAG")";
+  else printf ' "%s"' "$(basename "$WXS")"; fi
+}
+
 cat <<EOF
 
 == Windows runner build commands ==
-  # WiX v3 (candle/light):
-  candle.exe -arch x64 -dSourceDir=%SOURCE_DIR% -dVersion=$VERSION sub-browser.wxs
-  light.exe -ext WixUIExtension -ext WixUtilExtension -o sub-browser-$VERSION-x64.msi sub-browser.wixobj
+  # WiX v3 (candle/light):$( [ -f "$FRAG" ] && echo ' — candle BOTH .wxs files' )
+$( [ -f "$FRAG" ] && echo '  candle.exe -arch x64 -dSourceDir=%SOURCE_DIR% -dVersion='$VER_CORE' sub-browser.wxs sub-browser-engine-files.wxs' || echo '  candle.exe -arch x64 -dSourceDir=%SOURCE_DIR% -dVersion='$VER_CORE' sub-browser.wxs' )
+  light.exe -ext WixUIExtension -ext WixUtilExtension -o sub-browser-$VERSION-x64.msi sub-browser.wixobj$( [ -f "$FRAG" ] && echo ' sub-browser-engine-files.wixobj')
 
   # WiX v5 (dotnet tool):
-  wix build sub-browser.wxs -arch x64 -d SourceDir=%SOURCE_DIR% -d Version=$VERSION ^
+  wix build sub-browser.wxs$( [ -f "$FRAG" ] && echo ' sub-browser-engine-files.wxs') -arch x64 -d SourceDir=%SOURCE_DIR% -d Version=$VER_CORE ^
       -ext WixToolset.Util.wixext -ext WixToolset.UI.wixext ^
       -o sub-browser-$VERSION-x64.msi
 
   # Optional Authenticode signing of inner exe + msi:
   signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f cert.pfx /p %CERT_PASS% sub-browser-$VERSION-x64.msi
 
-This box: $(uname -s) — no WiX; artifact produced is the .wxs template only.
+This box: $(uname -s) — $( [ -n "${WIX3}${WIX5}" ] && echo "WiX found" || echo "no WiX; artifact produced is the .wxs template(s) only" ).
 EOF
 
-# If exe is staged and WiX present, actually build (best-effort: caller may
-# run candle/light itself; never abort the script on failure here):
+# If the exe is staged and WiX present, actually build (best-effort: caller
+# may run candle/light itself; never abort the script on failure here):
 if [ -n "${WIX3:-}${WIX5:-}" ] && [ -f "$STAGING/sub-browser.exe" ]; then
   ( cd "$(dirname "$WXS")"
     if [ -n "${WIX3:-}" ]; then
-      candle.exe -arch x64 -dSourceDir="$STAGING" -dVersion="$VERSION" sub-browser.wxs \
-        && light.exe -ext WixUIExtension -ext WixUtilExtension -o "sub-browser-$VERSION-x64.msi" sub-browser.wixobj
+      # shellcheck disable=SC2046
+      candle.exe -arch x64 -dSourceDir="$STAGING" -dVersion="$VER_CORE" $(wxs_args) \
+        && light.exe -ext WixUIExtension -ext WixUtilExtension -o "sub-browser-$VERSION-x64.msi" sub-browser.wixobj$( [ -f "$FRAG" ] && echo ' sub-browser-engine-files.wixobj')
     else
-      wix build sub-browser.wxs -arch x64 -d SourceDir="$STAGING" -d Version="$VERSION" \
+      # shellcheck disable=SC2046
+      wix build $(cd "$(dirname "$WXS")" && printf '%s ' sub-browser.wxs; [ -f "$FRAG" ] && printf '%s ' "$(basename "$FRAG")") -arch x64 -d SourceDir="$STAGING" -d Version="$VER_CORE" \
         -ext WixToolset.Util.wixext -ext WixToolset.UI.wixext -o "sub-browser-$VERSION-x64.msi"
     fi ) || echo "::warning::in-script MSI build failed (caller may retry with its own candle/light)"
   echo "== msi (if built): $(pwd)/$(dirname "$WXS")/sub-browser-$VERSION-x64.msi"

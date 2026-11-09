@@ -101,14 +101,27 @@ jobs:
           printf 'SUB_SERVOSHELL=/usr/share/sub-browser/engine/servoshell\n' \
             > $STAG/share/sub-browser/engine.env
 
-      - name: Smoke test (headless, xvfb)
+      - name: "Smoke test (headless, xvfb) — informative, non-fatal"
         run: |
+          # v2.0.0 run: gstreamer dev deps failed (libunwind-dev unmet) and
+          # smoke died with "webdriver never became ready" and no diagnostics.
+          # Install libunwind-dev FIRST, keep everything best-effort, and on
+          # failure dump ldd + a direct servoshell probe so the annotation
+          # tells us WHY (non-fatal either way — packages build regardless).
+          sudo apt-get install -y --no-install-recommends libunwind-dev || true
           sudo apt-get install -y --no-install-recommends xvfb libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad gstreamer1.0-libav || true
           export SUB_SERVOSHELL=$PWD/staging/share/sub-browser/engine/servoshell
-          timeout 300 xvfb-run -a staging/bin/sub-browser-smoke https://example.com/ \
-            || echo "::warning::smoke test failed (engine may need gstreamer/X on runner) — continuing"
+          if timeout 300 xvfb-run -a staging/bin/sub-browser-smoke https://example.com/; then
+            echo "smoke test PASS"
+          else
+            echo "::warning::smoke test failed on runner — diagnostics below; package build continues"
+            echo "--- missing engine libs (ldd) ---"
+            ldd "$SUB_SERVOSHELL" 2>&1 | grep "not found" || echo "(none: all shared libs resolve)"
+            echo "--- direct servoshell probe under xvfb ---"
+            timeout 30 xvfb-run -a "$SUB_SERVOSHELL" --help 2>&1 | head -20 || true
+          fi
 
       - name: Package — deb
         run: VERSION=$VERSION DIST_DIR=dist bash scripts/build-deb.sh staging
@@ -211,12 +224,18 @@ jobs:
       - name: Fetch Servo engine (windows prebuilt exists on v0.8.0 release)
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p staging
           curl -sfL -o servo-win.zip "$SERVO_BASE/servo-x86_64-windows-msvc.zip"
           curl -sfL -o servo-win.zip.sha256 "$SERVO_BASE/servo-x86_64-windows-msvc.zip.sha256"
-          sha256sum -c servo-win.zip.sha256 || echo "::warning::checksum file format mismatch — proceeding"
-          unzip -o servo-win.zip -d engine-win
-          find engine-win -maxdepth 3 | head
+          # The official .sha256 names the release-asset filename, not our
+          # local target name — that mismatch produced the bogus v2.0.0
+          # "checksum format mismatch" warning. Re-map, then HARD-fail on a
+          # real mismatch (this is the engine payload; do not proceed).
+          awk '{print $1"  servo-win.zip"}' servo-win.zip.sha256 | sha256sum -c -
+          unzip -q -o servo-win.zip -d engine-win
+          test -f engine-win/servo/servoshell.exe
+          echo "engine-win contents: $(find engine-win -type f | wc -l) files, $(du -sh engine-win | cut -f1)"
 
       - name: Stage + MSI
         shell: bash
@@ -224,14 +243,20 @@ jobs:
           set -euo pipefail
           cp desktop/target/release/sub-browser.exe staging/
           cp desktop/target/release/sub-browser-smoke.exe staging/ || true
-          EXE=$(find engine-win -type f -name '*.exe' | head -1)
-          cp "$EXE" staging/servoshell.exe          # resolve_binary finds servoshell beside the app exe
-          RES=$(find engine-win -type d -name resources | head -1)
-          if [ -n "$RES" ]; then cp -a "$RES" staging/resources; fi
+          # v2.0.0 bug: only servoshell.exe was copied here (the ~120 runtime
+          # DLLs — avcodec/gstreamer/glib — and resources stayed in
+          # engine-win/), and the WiX template only ever contained
+          # sub-browser.exe → a 4.2 MB MSI that cannot browse. Stage the
+          # ENTIRE engine directory beside the shell exe (DLLs must sit next
+          # to servoshell.exe for LoadLibrary to find them).
+          [ -d engine-win/servo ] || { echo "::error::engine zip not extracted"; exit 1; }
+          cp -a engine-win/servo/. staging/
+          [ -f staging/servoshell.exe ] || { echo "::error::servoshell.exe missing from staging"; exit 1; }
           # WiX <Icon> source: must be named subbrowser.ico inside staging
           cp desktop/crates/sub-browser/icons/icon.ico staging/subbrowser.ico
           mkdir -p dist
-          ls -la staging
+          echo "staged $(find staging -type f | wc -l) files, $(du -sh staging | cut -f1)"
+          ls staging | head -20
 
       - name: Install WiX + build MSI
         shell: bash
@@ -246,12 +271,14 @@ jobs:
           # re-stage the exe defensively in case staging got clobbered
           [ -f staging/sub-browser.exe ] || cp desktop/target/release/sub-browser.exe staging/
           [ -f staging/subbrowser.ico ] || cp desktop/crates/sub-browser/icons/icon.ico staging/subbrowser.ico
-          ls -la staging
+          ls staging | head
           MSI_OK=0
           if command -v candle >/dev/null 2>&1; then
             VERSION="$VER" DIST_DIR=dist bash scripts/build-msi.sh "$SRC"
-            if candle -arch x64 -dSourceDir="$SRC" -dVersion="$VER" dist/sub-browser.wxs \
-              && light -ext WixUIExtension -ext WixUtilExtension -o "dist/sub-browser-$VER-x64.msi" sub-browser.wixobj; then
+            # candle BOTH sources: the harvested engine fragment (generated by
+            # build-msi.sh) is what puts servoshell + DLLs + resources in the MSI
+            if candle -arch x64 -dSourceDir="$SRC" -dVersion="$VER" dist/sub-browser.wxs dist/sub-browser-engine-files.wxs \
+              && light -ext WixUIExtension -ext WixUtilExtension -o "dist/sub-browser-$VER-x64.msi" sub-browser.wixobj sub-browser-engine-files.wixobj; then
               MSI_OK=1
             fi
           else
@@ -259,6 +286,12 @@ jobs:
           fi
           if [ "$MSI_OK" = 1 ]; then
             ls -la dist/*.msi
+            SZ=$(stat -c%s "dist/sub-browser-$VER-x64.msi" 2>/dev/null || echo 0)
+            # engine is ~100 MB raw; compressed MSI must be far above the old
+            # 4.2 MB engine-less build — guard against silently regressing.
+            if [ "$SZ" -lt 30000000 ]; then
+              echo "::warning::MSI is only $SZ bytes — engine payload likely missing (expect >~30-60 MB)"
+            fi
           else
             echo "::warning::MSI build failed — shipping bare .exe instead"
             cp staging/sub-browser.exe "dist/sub-browser-$VER-x64.exe"
@@ -303,9 +336,13 @@ jobs:
 
       - name: Fetch Servo engine (macOS aarch64 prebuilt dmg exists)
         run: |
+          set -euo pipefail
           curl -sfL -o servo-mac.dmg "$SERVO_BASE/servo-aarch64-apple-darwin.dmg"
           curl -sfL -o servo-mac.dmg.sha256 "$SERVO_BASE/servo-aarch64-apple-darwin.dmg.sha256"
-          shasum -a 256 -c servo-mac.dmg.sha256 || echo "::warning::sha256 file mismatch — proceeding"
+          # Official .sha256 names the release-asset file, not our local
+          # servo-mac.dmg — that mismatch caused the v2.0.0 "sha256 mismatch
+          # proceeding" warning. Re-map and hard-fail on a REAL mismatch.
+          awk '{print $1"  servo-mac.dmg"}' servo-mac.dmg.sha256 | shasum -a 256 -c -
           hdiutil attach servo-mac.dmg -nobrowse -mountpoint /tmp/servo-dmg
           find /tmp/servo-dmg -maxdepth 3 | head -20
 
