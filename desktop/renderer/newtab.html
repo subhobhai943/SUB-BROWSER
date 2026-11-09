@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<!--
+  SUB-BROWSER — custom new-tab page.
+  Dragon logo (bundled assets/logo.jpg), a large Google search box,
+  dark gradient background with the dragon-blue accent.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:;">
+  <title>SUB-BROWSER — New Tab</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: "Segoe UI", "Ubuntu", system-ui, sans-serif;
+      color: #e8e8ea;
+      /* Dark gradient: near-black base fading into a deep dragon-blue tint. */
+      background:
+        radial-gradient(1200px 700px at 50% -10%, rgba(41,171,226,.14), transparent 60%),
+        linear-gradient(160deg, #050505 0%, #07090d 55%, #050505 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      user-select: none;
+    }
+    .logo {
+      width: 190px; height: 190px;
+      object-fit: contain;
+      border-radius: 24px;
+      /* Subtle dragon-blue glow around the logo. */
+      filter: drop-shadow(0 0 26px rgba(41,171,226,.35));
+    }
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: #29ABE2;
+      text-shadow: 0 0 18px rgba(41,171,226,.4);
+    }
+    .search {
+      width: min(640px, 82vw);
+      display: flex;
+    }
+    .search input {
+      flex: 1;
+      height: 54px;
+      font-size: 17px;
+      padding: 0 22px;
+      color: #e8e8ea;
+      background: rgba(255,255,255,.04);
+      border: 1px solid #1f1f26;
+      border-radius: 27px;
+      outline: none;
+    }
+    .search input::placeholder { color: #6f6f78; }
+    .search input:focus {
+      border-color: #29ABE2;
+      box-shadow: 0 0 0 2px rgba(41,171,226,.35), 0 0 26px rgba(41,171,226,.18);
+    }
+    .hint { font-size: 12px; color: #55555e; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+  <img class="logo" src="../assets/logo.jpg" alt="SUB-BROWSER dragon logo">
+  <h1>SUB-BROWSER</h1>
+  <form class="search" id="f">
+    <input id="q" type="text" autofocus placeholder="Search the web with Google"
+           aria-label="Search">
+  </form>
+  <div class="hint">Enter to search &nbsp;·&nbsp; Ctrl+T new tab &nbsp;·&nbsp; Ctrl+W close tab</div>
+
+  <script>
+    // Enter → Google search, replacing this page in the current webview.
+    document.getElementById('f').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const q = document.getElementById('q').value.trim();
+      if (!q) return;
+      // history.replaceState keeps the new-tab page out of Back history.
+      location.replace('https://www.google.com/search?q=' + encodeURIComponent(q));
+    });
+  </script>
+</body>
+</html>

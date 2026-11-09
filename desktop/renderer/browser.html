@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  SUB-BROWSER — browser shell (chrome) UI.
+  Hosts the tab strip, toolbar (back/forward/reload/home + address bar),
+  and a <webview> stack — one sandboxed webview per open tab.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+  <title>SUB-BROWSER</title>
+  <link rel="stylesheet" href="browser.css">
+</head>
+<body>
+  <!-- Tab strip: tabs injected here + new-tab button -->
+  <div id="tabstrip">
+    <div id="tabs"></div>
+    <button id="newtab" title="New tab (Ctrl+T)">+</button>
+  </div>
+
+  <!-- Navigation toolbar -->
+  <div id="toolbar">
+    <button id="back"   title="Back">←</button>
+    <button id="forward" title="Forward">→</button>
+    <button id="reload" title="Reload">⟳</button>
+    <button id="home"   title="Home">⌂</button>
+    <input id="address" type="text" spellcheck="false"
+           placeholder="Search Google or enter URL">
+    <button id="go" title="Go">↵</button>
+  </div>
+
+  <!-- Webview host: one <webview> per tab, only the active one visible -->
+  <div id="views"></div>
+
+  <script src="browser.js"></script>
+</body>
+</html>
