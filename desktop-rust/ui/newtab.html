@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New Tab</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(900px 500px at 70% -10%, rgba(41,171,226,.12), transparent 60%),
+      #050505;
+    color: #e8e8e8;
+    font: 14px "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 26px; user-select: none;
+  }
+  img { width: 170px; height: 170px; border-radius: 24px; box-shadow: 0 0 40px rgba(41,171,226,.25); }
+  h1 { font-size: 26px; letter-spacing: 4px; color: #fff; }
+  h1 span { color: #29ABE2; text-shadow: 0 0 14px rgba(41,171,226,.7); }
+  #q {
+    width: min(560px, 86%); height: 46px; border-radius: 23px; padding: 0 20px;
+    background: #0b0b0b; color: #ddd; border: 1px solid #262626; outline: none;
+    font-size: 14px;
+  }
+  #q:focus { border-color: #29ABE2; box-shadow: 0 0 0 3px rgba(41,171,226,.15); }
+  .links { display: flex; gap: 18px; }
+  .links a {
+    color: #8ab9cc; text-decoration: none; font-size: 12px; padding: 6px 12px;
+    border: 1px solid #1d1d1d; border-radius: 8px; background: #0a0a0a;
+  }
+  .links a:hover { border-color: #29ABE2; color: #29ABE2; }
+  .foot { color: #3b3b3b; font-size: 11px; letter-spacing: 2px; }
+</style>
+</head>
+<body>
+  <img src="logo.jpg" alt="SUB-BROWSER">
+  <h1><span>SUB</span>-BROWSER</h1>
+  <input id="q" placeholder="Search the web or enter an address" autofocus spellcheck="false">
+  <div class="links">
+    <a href="https://example.com">example.com</a>
+    <a href="https://duckduckgo.com">DuckDuckGo</a>
+    <a href="https://webkit.org">WebKit</a>
+    <a href="https://rust-lang.org">Rust</a>
+    <a href="https://tauri.app">Tauri</a>
+  </div>
+  <div class="foot">POWERED BY RUST · WEBKITGTK · SUBBROWSER/1.0</div>
+<script>
+(function () {
+  var I = window.__TAURI_INTERNALS__;
+  function go(u) {
+    if (!I) return;
+    I.invoke('plugin:event|emit', { event: 'sub-cmd', payload: { cmd: 'navigate', arg: String(u) } }).catch(function(){});
+  }
+  var q = document.getElementById('q');
+  q.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && q.value.trim()) go(q.value);
+  });
+  document.querySelectorAll('.links a').forEach(function (a) {
+    a.addEventListener('click', function (e) { e.preventDefault(); go(a.href); });
+  });
+})();
+</script>
+</body>
+</html>

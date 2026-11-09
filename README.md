@@ -56,3 +56,11 @@ This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version. See [LICENSE](LICENSE).
+
+### Rust edition (desktop-rust/)
+Native Rust browser built on Tauri 2 (WRY/WebKitGTK engine, ~7.5 MB binary):
+```bash
+cd desktop-rust/src-tauri
+cargo build --release    # binary: target/release/sub-browser
+```
+Requires webkit2gtk-4.1 + gtk3 dev packages (Linux).

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SUB-BROWSER</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #050505;
+    color: #e8e8e8;
+    font: 13px/1.3 "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  #tabstrip {
+    height: 34px; display: flex; align-items: flex-end; gap: 4px;
+    padding: 0 8px; overflow-x: auto; overflow-y: hidden; flex: none;
+  }
+  .tabpill {
+    display: flex; align-items: center; gap: 6px; max-width: 220px; min-width: 120px;
+    height: 28px; padding: 0 8px 0 10px; border-radius: 8px 8px 0 0;
+    background: #101010; border: 1px solid #1d1d1d; border-bottom: none;
+    color: #9a9a9a; cursor: pointer; flex: none;
+  }
+  .tabpill.active {
+    background: #0c1a21; border-color: #29ABE2; color: #fff;
+    box-shadow: 0 0 12px rgba(41,171,226,.25);
+  }
+  .tabpill .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabpill .x {
+    flex: none; width: 16px; height: 16px; line-height: 15px; text-align: center;
+    border-radius: 4px; color: #777; font-size: 12px;
+  }
+  .tabpill .x:hover { background: #29ABE2; color: #050505; }
+  #newtab {
+    flex: none; width: 26px; height: 26px; margin-bottom: 1px; border-radius: 6px;
+    border: 1px solid #1d1d1d; background: #0b0b0b; color: #29ABE2;
+    font-size: 16px; line-height: 1; cursor: pointer;
+  }
+  #newtab:hover { border-color: #29ABE2; }
+  #urlrow {
+    height: 62px; display: flex; align-items: center; gap: 8px;
+    padding: 0 10px; flex: none;
+    border-top: 1px solid #141414;
+  }
+  .logo {
+    width: 44px; height: 44px; border-radius: 8px; flex: none;
+    background: #000; object-fit: contain;
+  }
+  button.nav {
+    width: 34px; height: 34px; flex: none; border-radius: 8px;
+    background: #0c0c0c; border: 1px solid #222; color: #29ABE2;
+    font-size: 16px; cursor: pointer; line-height: 1;
+  }
+  button.nav:hover { border-color: #29ABE2; background: #0e1b22; }
+  button.nav:active { transform: translateY(1px); }
+  #urlbar {
+    flex: 1; height: 36px; border-radius: 18px; padding: 0 14px;
+    background: #0b0b0b; border: 1px solid #262626; color: #ddd;
+    font: 13px/36px "Segoe UI", monospace; outline: none;
+    user-select: text;
+  }
+  #urlbar:focus { border-color: #29ABE2; box-shadow: 0 0 0 2px rgba(41,171,226,.15); }
+  #brand {
+    flex: none; color: #29ABE2; font-weight: 700; letter-spacing: 1px;
+    font-size: 12px; margin-left: 4px; text-shadow: 0 0 8px rgba(41,171,226,.6);
+  }
+  ::-webkit-scrollbar { height: 6px; }
+  ::-webkit-scrollbar-thumb { background: #29ABE2; border-radius: 3px; }
+</style>
+</head>
+<body>
+  <div id="tabstrip"></div>
+  <div id="urlrow">
+    <img class="logo" src="logo.jpg" alt="SUB">
+    <span id="brand">SUB&#8209;BROWSER</span>
+    <button class="nav" id="back" title="Back">&#9664;</button>
+    <button class="nav" id="fwd" title="Forward">&#9654;</button>
+    <button class="nav" id="reload" title="Reload">&#10227;</button>
+    <input id="urlbar" spellcheck="false" placeholder="Search or enter address">
+  </div>
+<script>
+(function () {
+  var I = window.__TAURI_INTERNALS__;
+  var tabs = {};      // label -> {url,title,active}
+  var order = [];     // label order of appearance
+  var activeLabel = null;
+  var userTyped = false;
+
+  function cmd(c, a) {
+    if (!I) return;
+    I.invoke('plugin:event|emit', { event: 'sub-cmd', payload: { cmd: c, arg: a === undefined ? '' : String(a) } })
+      .catch(function () {});
+  }
+
+  function pretty(u) {
+    if (!u) return '';
+    if (u.indexOf('newtab.html') !== -1) return '';
+    return u;
+  }
+
+  function render() {
+    var strip = document.getElementById('tabstrip');
+    strip.innerHTML = '';
+    order.forEach(function (label) {
+      var t = tabs[label];
+      if (!t) return;
+      var pill = document.createElement('div');
+      pill.className = 'tabpill' + (label === activeLabel ? ' active' : '');
+      var txt = document.createElement('span');
+      txt.className = 't';
+      txt.textContent = t.title
+        ? t.title
+        : (pretty(t.url).replace(/^https?:\/\//, '').replace(/\/$/, '') || 'New Tab');
+      var x = document.createElement('span');
+      x.className = 'x';
+      x.textContent = '\u2715';
+      x.addEventListener('click', function (e) {
+        e.stopPropagation();
+        cmd('close-tab', label);
+      });
+      pill.appendChild(txt); pill.appendChild(x);
+      pill.addEventListener('click', function () { cmd('switch-tab', label); });
+      strip.appendChild(pill);
+    });
+    var plusBtn = document.createElement('button');
+    plusBtn.id = 'newtab'; plusBtn.textContent = '+'; plusBtn.title = 'New tab';
+    plusBtn.addEventListener('click', function () { cmd('new-tab'); });
+    strip.appendChild(plusBtn);
+    var a = tabs[activeLabel];
+    var bar = document.getElementById('urlbar');
+    if (!userTyped && a) bar.value = pretty(a.url);
+  }
+
+  function onState(p) {
+    var label = p.tab;
+    if (p.event === 'closed') {
+      delete tabs[label];
+      order = order.filter(function (l) { return l !== label; });
+      if (activeLabel === label) activeLabel = null;
+      render();
+      return;
+    }
+    if (!tabs[label]) { tabs[label] = { url: '', title: '', active: false }; order.push(label); }
+    var t = tabs[label];
+    if (p.event === 'url') { t.url = p.url; }
+    else if (p.event === 'title') { t.title = p.title; }
+    else { if (p.url) t.url = p.url; if (p.title) t.title = p.title; }
+    if (p.active) {
+      activeLabel = label;
+      userTyped = false;
+      var bar = document.getElementById('urlbar');
+      bar.value = pretty(t.url);
+    }
+    render();
+  }
+
+  function boot() {
+    if (!I) { setTimeout(boot, 50); return; }
+    I.invoke('plugin:event|listen', {
+      event: 'sub-state',
+      target: { kind: 'Any' },
+      handler: I.transformCallback(function (e) { onState(e.payload); })
+    }).catch(function () {});
+    cmd('ready');
+    render();
+  }
+  boot();
+
+  document.getElementById('back').addEventListener('click', function () { cmd('back'); });
+  document.getElementById('fwd').addEventListener('click', function () { cmd('forward'); });
+  document.getElementById('reload').addEventListener('click', function () { cmd('reload'); });
+  document.getElementById('newtab').addEventListener('click', function () { cmd('new-tab'); });
+  var bar = document.getElementById('urlbar');
+  bar.addEventListener('input', function () { userTyped = bar.value !== ''; });
+  bar.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && bar.value.trim()) { cmd('navigate', bar.value); userTyped = false; bar.blur(); }
+  });
+  bar.addEventListener('focus', function () { bar.select(); });
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); bar.focus(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 't') { e.preventDefault(); cmd('new-tab'); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') { e.preventDefault(); if (activeLabel) cmd('close-tab', activeLabel); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') { e.preventDefault(); cmd('reload'); }
+  });
+})();
+</script>
+</body>
+</html>
