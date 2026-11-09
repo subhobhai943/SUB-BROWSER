@@ -36,6 +36,7 @@ unzip_aar androidx-lifecycle-process https://dl.google.com/dl/android/maven2/and
 unzip_aar androidx-lifecycle-runtime https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-runtime/2.6.2/lifecycle-runtime-2.6.2.aar
 
 unzip_aar androidx-arch-core-runtime https://dl.google.com/dl/android/maven2/androidx/arch/core/core-runtime/2.2.0/core-runtime-2.2.0.aar
+fetch https://dl.google.com/dl/android/maven2/androidx/lifecycle/lifecycle-common/2.6.2/lifecycle-common-2.6.2.jar $G/deps/androidx-lifecycle-common.jar
 fetch https://dl.google.com/dl/android/maven2/androidx/arch/core/core-common/2.2.0/core-common-2.2.0.jar $G/deps/androidx-arch-core-common.jar
 fetch https://dl.google.com/dl/android/maven2/androidx/concurrent/concurrent-futures/1.1.0/concurrent-futures-1.1.0.jar $G/deps/androidx-concurrent-futures.jar
 unzip_aar androidx-startup https://dl.google.com/dl/android/maven2/androidx/startup/startup-runtime/1.1.1/startup-runtime-1.1.1.aar
