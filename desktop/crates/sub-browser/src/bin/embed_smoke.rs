@@ -38,6 +38,31 @@ fn main() {
     println!("[embed-smoke] TITLE: {title:?} URL: {final_url:?} load={:?}", t1.elapsed());
     assert!(final_url.contains("example.com"), "unexpected final url {final_url}");
 
+    // v2.0.1 stretched-display proof: resize the software surface + tabs and
+    // assert native-surface screenshots come back at EXACTLY the requested
+    // size (dims read from the PNG IHDR).
+    for (w, h) in [(1024u32, 768u32), (1600u32, 900u32)] {
+        be.set_viewport(w, h).expect("set_viewport");
+        std::thread::sleep(Duration::from_millis(300));
+        let shot = be.screenshot("embed-1").expect("resized screenshot");
+        let pw = u32::from_be_bytes([shot[16], shot[17], shot[18], shot[19]]);
+        let ph = u32::from_be_bytes([shot[20], shot[21], shot[22], shot[23]]);
+        println!("[embed-smoke] resized viewport {w}x{h} -> surface capture {pw}x{ph}");
+        assert_eq!((pw, ph), (w, h), "embed surface did not follow set_viewport");
+        std::fs::write(format!("/tmp/sub201_embed_{w}.png"), &shot).ok();
+    }
+
+    // v2.0.1 homepage proof: bundled newtab data: URL renders in-process.
+    be.navigate("embed-1", &sub_browser::newtab::newtab_url()).expect("newtab nav");
+    std::thread::sleep(Duration::from_millis(1500));
+    let t = be.title("embed-1").unwrap_or_default();
+    println!("[embed-smoke] newtab title: {t:?}");
+    let shot = be.screenshot("embed-1").expect("newtab screenshot");
+    std::fs::write("/tmp/sub201_embed_newtab.png", &shot).ok();
+    // restore a real page for the remaining traversal checks
+    be.navigate("embed-1", &url).expect("renav");
+    std::thread::sleep(Duration::from_millis(800));
+
     let ts = Instant::now();
     let shot = be.screenshot("embed-1").expect("screenshot");
     println!(

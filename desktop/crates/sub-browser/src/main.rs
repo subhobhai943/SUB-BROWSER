@@ -29,17 +29,28 @@ use tauri::utils::config::Color;
 use tauri::webview::WebviewBuilder;
 use tauri::{AppHandle, Emitter, Listener, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Rect, Url, WebviewUrl, Window, WindowEvent, Wry};
 
+#[cfg(feature = "embed")]
 use sub_browser::engine::embed::EmbedBackend;
 use sub_browser::engine::servo_ipc::ServoIpcBackend;
 use sub_browser::engine::{EngineBackend, EngineError};
+use sub_browser::newtab::newtab_url;
 use sub_browser::store::Store;
 
 const TOOLBAR_H: f64 = 96.0; // logical px chrome height (mirrors ui/index.html)
-const W: f64 = 1280.0;
-const H: f64 = 800.0;
 const DARK: Color = Color(5, 5, 5, 255);
-const FRAME_MS: u64 = 100; // ~10 fps tile stream
+/// Tile capture cadence while the page keeps changing (v2.0.1: damage-aware
+/// loop — fast while frames differ, backs off when the page is static).
+const FRAME_MS_DIRTY: u64 = 33;
+const FRAME_MS_IDLE: u64 = 150;
 const PROFILE: &str = "default";
+
+/// Window inner size: env-overridable so proof runs can launch the shell at
+/// arbitrary window sizes on Xvfb (SUB_WIN_W / SUB_WIN_H).
+fn window_size() -> (f64, f64) {
+    let w = std::env::var("SUB_WIN_W").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or(1280.0);
+    let h = std::env::var("SUB_WIN_H").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or(800.0);
+    (w.max(400.0), h.max(300.0))
+}
 
 #[derive(Clone, Serialize)]
 struct TabInfo {
@@ -76,6 +87,11 @@ struct AppState {
     store: Mutex<Option<Arc<Store>>>,
     last_badge: Mutex<Option<Instant>>,
     engine_dead: AtomicBool,
+    /// Homepage URL (setting `homepage`; default = bundled SUB newtab
+    /// data: URL). Read once at boot.
+    homepage: String,
+    /// Resize debounce generation (relaunch-safe coalescing of resize events).
+    resize_gen: AtomicUsize,
 }
 
 static SHARED_STATE: OnceLock<Arc<AppState>> = OnceLock::new();
@@ -188,6 +204,13 @@ fn normalize_url(input: &str) -> Url {
     if s.is_empty() {
         return "https://duckduckgo.com/".parse().unwrap();
     }
+    // Shell-generated internal pages (the bundled newtab data: URL, about:
+    // blank) pass through untouched; user-typed data: is likewise honoured.
+    if s.starts_with("data:") || s.starts_with("about:") {
+        if let Ok(u) = s.parse::<Url>() {
+            return u;
+        }
+    }
     let candidate = if s.starts_with("http://") || s.starts_with("https://") {
         s.to_string()
     } else if s.contains('.') && !s.contains(' ') && !s.contains('/') {
@@ -200,8 +223,6 @@ fn normalize_url(input: &str) -> Url {
 
 fn relayout(window: &Window<Wry>, app: &AppHandle<Wry>) {
     let Ok(size) = window.inner_size() else { return };
-    let Ok(scale) = window.scale_factor() else { return };
-    let _ = scale;
     if let Some(toolbar) = app.get_webview("toolbar") {
         // The toolbar webview fills the whole window; chrome is the top strip
         // and the engine tile stream is rendered inside it below TOOLBAR_H.
@@ -210,6 +231,31 @@ fn relayout(window: &Window<Wry>, app: &AppHandle<Wry>) {
             size: PhysicalSize::new(size.width.max(1), size.height.max(1)).into(),
         });
     }
+    // v2.01 stretched-display fix: propagate the window change to the engine
+    // so it re-renders at the exact #view region size (never stretch).
+    // Debounced: coalesce the flood of resize events during a drag.
+    let state = state_of(app);
+    let gen = state.resize_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(150));
+        let st = state_of(&app2);
+        if st.resize_gen.load(Ordering::SeqCst) != gen {
+            return; // a newer resize already queued
+        }
+        if let (Some(eng), Some((w, h))) = (engine(&app2), engine_region_size(&app2)) {
+            let _ = eng.set_viewport(w, h);
+        }
+    });
+}
+
+/// Physical size of the engine view region (window minus the toolbar strip).
+fn engine_region_size(app: &AppHandle<Wry>) -> Option<(u32, u32)> {
+    let win = app.get_window("main")?;
+    let size = win.inner_size().ok()?;
+    let scale = win.scale_factor().ok()?;
+    let toolbar_px = (TOOLBAR_H * scale).round() as u32;
+    Some((size.width.max(64), size.height.saturating_sub(toolbar_px).max(64)))
 }
 
 fn new_tab(app: &AppHandle<Wry>, url: Url) -> Result<String, String> {
@@ -267,7 +313,13 @@ fn spawn_engine_and_pump(app: AppHandle<Wry>, start_url: Url) {
                         emit_adblock_count(&app_rx, false);
                     }
                 });
-                // First tab.
+                // First tab. Bring the engine up at the window's exact view
+                // region size BEFORE creating the tab, so the very first
+                // frame already renders 1:1 into the window (stretched-
+                // display fix); later resizes flow through relayout().
+                if let Some((w, h)) = engine_region_size(&app) {
+                    let _ = be.set_viewport(w, h);
+                }
                 let _ = new_tab(&app, start_url);
             }
             Err(e) => {
@@ -280,19 +332,34 @@ fn spawn_engine_and_pump(app: AppHandle<Wry>, start_url: Url) {
         }
 
         // 2) Tile stream + page-ready poll loop.
+        //    v2.0.1 smoothness: damage-aware cadence. A cheap FNV hash of the
+        //    captured PNG decides whether the page actually changed: unchanged
+        //    frames are skipped (no base64, no IPC emit — the expensive parts
+        //    for the toolbar), and while frames keep changing the loop spins
+        //    at ~30 fps instead of a fixed 10 fps.
         let mut last_poll = Instant::now();
         let mut last_seen: HashMap<String, String> = HashMap::new();
+        let mut last_hash: u64 = 0;
+        let mut sleep_ms = FRAME_MS_DIRTY;
         loop {
-            std::thread::sleep(Duration::from_millis(FRAME_MS));
+            std::thread::sleep(Duration::from_millis(sleep_ms));
             let Some(eng) = engine(&app) else { break };
             let Some(active) = active_label(&app) else { continue };
 
             // Frame: screenshot of active tab -> <img> in the toolbar region.
             match eng.screenshot(&active) {
                 Ok(png) if !png.is_empty() => {
-                    let (vw, vh) = eng.viewport(&active).unwrap_or((1024, 740));
-                    let img = sub_browser::b64::encode(&png);
-                    let _ = app.emit_to("toolbar", "frame", Frame { tab: active.clone(), img, vw, vh });
+                    let hash = fnv1a(&png);
+                    if hash == last_hash {
+                        // No damage: skip encode+emit, ease the cadence back.
+                        sleep_ms = FRAME_MS_IDLE;
+                    } else {
+                        last_hash = hash;
+                        sleep_ms = FRAME_MS_DIRTY;
+                        let (vw, vh) = eng.viewport(&active).unwrap_or((1024, 740));
+                        let img = sub_browser::b64::encode(&png);
+                        let _ = app.emit_to("toolbar", "frame", Frame { tab: active.clone(), img, vw, vh });
+                    }
                 }
                 Ok(_) => {}
                 Err(e) => {
@@ -358,12 +425,24 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            let start_url = std::env::args()
+            let arg_url = std::env::args()
                 .nth(1)
-                .or_else(|| std::env::var("SUB_START_URL").ok())
-                .unwrap_or_else(|| "https://example.com".to_string());
+                .or_else(|| std::env::var("SUB_START_URL").ok());
 
             let store_opt: Option<Arc<Store>> = Store::open(PROFILE).ok().map(Arc::new);
+
+            // v2.0.1 homepage fix: fresh profiles boot on the bundled SUB
+            // newtab (dark dragon page) instead of example.com. Setting
+            // `homepage` overrides; an explicit CLI/env URL still wins.
+            let homepage = store_opt
+                .as_ref()
+                .and_then(|s| s.setting("homepage"))
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(newtab_url);
+            let start_url = match arg_url {
+                Some(a) if !a.is_empty() => normalize_url(&a),
+                _ => homepage.parse::<Url>().unwrap_or_else(|_| normalize_url("")),
+            };
 
             let adblock_pref = store_opt
                 .as_ref()
@@ -383,13 +462,16 @@ fn main() {
                 store: Mutex::new(store_opt),
                 last_badge: Mutex::new(None),
                 engine_dead: AtomicBool::new(false),
+                homepage: homepage.clone(),
+                resize_gen: AtomicUsize::new(0),
             });
             app.manage(state_arc.clone());
             SHARED_STATE.set(state_arc).ok();
             SHARED_APP.set(handle.clone()).ok();
 
+            let (win_w, win_h) = window_size();
             let window = Window::builder(&handle, "main")
-                .inner_size(W, H)
+                .inner_size(win_w, win_h)
                 .min_inner_size(800.0, 400.0)
                 .title("SUB-BROWSER")
                 .background_color(DARK)
@@ -402,7 +484,7 @@ fn main() {
                     WebviewBuilder::new("toolbar", WebviewUrl::App("index.html".into()))
                         .background_color(DARK),
                     LogicalPosition::new(0.0, 0.0),
-                    LogicalSize::new(W, H),
+                    LogicalSize::new(win_w, win_h),
                 )
                 .map_err(|e| e.to_string())?;
 
@@ -426,7 +508,7 @@ fn main() {
                 }
             });
 
-            spawn_engine_and_pump(handle.clone(), normalize_url(&start_url));
+            spawn_engine_and_pump(handle.clone(), start_url.clone());
 
             // Toolbar command bus (worker threads; never the GLib main thread).
             let h = handle.clone();
@@ -459,13 +541,14 @@ fn main() {
                         "home" => {
                             if let (Some(e), Some(l)) = (&eng, &active) {
                                 state.settled.lock().unwrap().remove(l);
-                                let _ = e.navigate(l, "https://example.com/");
+                                let _ = e.navigate(l, &state.homepage.clone());
                             }
                         }
                         "new-tab" => {
-                            // The engine cannot render the tauri-origin newtab
-                            // page, so fresh tabs start on the search engine.
-                            let _ = new_tab(&app, normalize_url("duckduckgo.com"));
+                            // Fresh tabs start on the bundled SUB newtab page
+                            // (data: URL renders in the engine itself).
+                            let url = state.homepage.clone();
+                            let _ = new_tab(&app, normalize_url(&url));
                         }
                         "switch-tab" => {
                             if state.tab_order.lock().unwrap().contains(&arg) {
@@ -486,8 +569,9 @@ fn main() {
                             if let Some(next) = remaining.iter().find(|l| tab_n(l) > closed_n).or_else(|| remaining.first()) {
                                 show_only(&app, next);
                             } else if let Some(e) = &eng {
-                                // last tab closed: open a fresh one
-                                let _ = new_tab(&app, normalize_url("duckduckgo.com"));
+                                // last tab closed: open a fresh newtab
+                                let url = state.homepage.clone();
+                                let _ = new_tab(&app, normalize_url(&url));
                                 let _ = e;
                             }
                         }
@@ -570,6 +654,16 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building SUB-BROWSER v2")
         .run(|_app, _event| {});
+}
+
+/// FNV-1a over the PNG bytes — cheap "did the frame change?" damage probe.
+pub fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
 }
 
 fn parse_pair(s: &str) -> (f64, f64) {

@@ -99,6 +99,7 @@ mod imp {
         Click { tab: String, x: f64, y: f64, reply: Sender<EngineResult<()>> },
         Key { tab: String, key: String, reply: Sender<EngineResult<()>> },
         Scroll { tab: String, dx: f64, dy: f64, reply: Sender<EngineResult<()>> },
+        Resize { w: u32, h: u32, reply: Sender<EngineResult<()>> },
         Shutdown,
     }
 
@@ -177,6 +178,27 @@ mod imp {
             wv.resize(PhysicalSize::new(self.viewport.0, self.viewport.1));
             self.tabs.insert(tab.to_string(), wv);
             self.active = Some(tab.to_string());
+            Ok(())
+        }
+
+        /// Resize the software surface + every tab's viewport to exactly the
+        /// window's client area (v2.0.1 stretched-display fix: the chrome
+        /// shows engine frames 1:1, so no non-uniform scaling is needed).
+        fn resize(&mut self, w: u32, h: u32) -> EngineResult<()> {
+            let w = w.max(64);
+            let h = h.max(64);
+            if self.viewport == (w, h) {
+                return Ok(());
+            }
+            self.viewport = (w, h);
+            // SoftwareRenderingContext::resize resizes its swap chain; it
+            // asserts >=1x1 (we clamp to 64 above).
+            self.ctx.resize(PhysicalSize::new(w, h));
+            let size = PhysicalSize::new(w, h);
+            for wv in self.tabs.values() {
+                wv.resize(size);
+            }
+            self.delegate.dirty.set(true);
             Ok(())
         }
 
@@ -385,6 +407,10 @@ mod imp {
                     });
                     let _ = reply.send(r);
                 }
+                Cmd::Resize { w, h, reply } => {
+                    let r = self.resize(w, h);
+                    let _ = reply.send(r);
+                }
                 Cmd::Shutdown => {}
             }
         }
@@ -414,7 +440,12 @@ mod imp {
         alive: Arc<AtomicBool>,
         blocked_txs: Mutex<Vec<Sender<BlockedEvent>>>,
         adblock_on: AtomicBool,
-        viewport: (u32, u32),
+        /// Current rendering viewport; updated by `set_viewport` on window
+        /// resize (mirrors the embed thread's `EmbedInner::viewport`).
+        viewport: std::sync::RwLock<(u32, u32)>,
+        /// Viewport the shell requested at least once (Some after the first
+        /// window-driven resize).
+        resized: std::sync::RwLock<Option<(u32, u32)>>,
         thread: Mutex<Option<JoinHandle<()>>>,
     }
 
@@ -458,7 +489,8 @@ mod imp {
                 alive,
                 blocked_txs: Mutex::new(Vec::new()),
                 adblock_on: AtomicBool::new(true),
-                viewport,
+                viewport: std::sync::RwLock::new(viewport),
+                resized: std::sync::RwLock::new(None),
                 thread: Mutex::new(Some(thread)),
             })
         }
@@ -593,7 +625,17 @@ mod imp {
             )
         }
         fn viewport(&self, _tab_id: &str) -> EngineResult<(u32, u32)> {
-            Ok(self.viewport)
+            Ok(*self.viewport.read().unwrap())
+        }
+        fn set_viewport(&self, w: u32, h: u32) -> EngineResult<()> {
+            let (tx, rx) = channel();
+            self.call(Cmd::Resize { w, h, reply: tx }, rx, Duration::from_secs(10))?;
+            *self.viewport.write().unwrap() = (w.max(64), h.max(64));
+            *self.resized.write().unwrap() = Some((w.max(64), h.max(64)));
+            Ok(())
+        }
+        fn requested_viewport(&self) -> Option<(u32, u32)> {
+            *self.resized.read().unwrap()
         }
         fn focus(&self, tab_id: &str) -> EngineResult<()> {
             let (tx, rx) = channel();
@@ -645,10 +687,16 @@ mod imp {
             self.blocked_txs.lock().unwrap().push(tx);
             rx
         }
+        fn set_adblock_enabled(&self, on: bool) {
+            // Same runtime toggle as the IPC backend: inject_adblock gates on
+            // this flag (v2.0.1: wired so the toolbar shield works on embed).
+            self.adblock_on.store(on, Ordering::Relaxed);
+        }
         fn describe(&self) -> String {
             format!(
-                "embed (servo 0.8.0 in-process, software surface {}x{}, zero-copy)",
-                self.viewport.0, self.viewport.1
+                "embed (servo 0.8.0 in-process, software surface {w}x{h}, zero-copy)",
+                w = self.viewport.read().unwrap().0,
+                h = self.viewport.read().unwrap().1
             )
         }
     }

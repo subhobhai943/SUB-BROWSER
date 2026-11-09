@@ -198,6 +198,19 @@ impl WdClient {
         let h = v.get("height").and_then(|h| h.as_f64()).unwrap_or(740.0);
         Ok((w as u32, h as u32))
     }
+    /// Resize the focused window's rendering viewport. Verified on servoshell
+    /// 0.8.0 headless: innerWidth/innerHeight and screenshot dimensions both
+    /// follow the requested rect exactly.
+    pub fn set_window_rect(&self, sid: &str, width: u32, height: u32) -> WdResult<(u32, u32)> {
+        let v = self.request(
+            "POST",
+            &format!("/session/{sid}/window/rect"),
+            Some(&serde_json::json!({ "width": width, "height": height })),
+        )?;
+        let w = v.get("width").and_then(|w| w.as_f64()).unwrap_or(width as f64);
+        let h = v.get("height").and_then(|h| h.as_f64()).unwrap_or(height as f64);
+        Ok((w as u32, h as u32))
+    }
 
     // ---- Content ----------------------------------------------------------
 

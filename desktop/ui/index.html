@@ -111,7 +111,10 @@
   }
   #frame {
     position: absolute; inset: 0; width: 100%; height: 100%;
-    object-fit: fill; image-rendering: auto;
+    /* v2.0.1: the engine is resized to the exact region size, so this is 1:1;
+       `contain` is the safety net — during a resize (or if the engine can't
+       follow) frames letterbox instead of stretching non-uniformly. */
+    object-fit: contain; image-rendering: auto;
     -webkit-user-drag: none;
   }
   #status {
@@ -188,6 +191,8 @@
   function pretty(u) {
     if (!u) return '';
     if (u.indexOf('newtab.html') !== -1) return '';
+    // Bundled SUB newtab (data: URL) — show an empty bar like chrome does.
+    if (u.indexOf('data:text/html') === 0) return '';
     return u;
   }
 

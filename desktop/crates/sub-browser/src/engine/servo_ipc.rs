@@ -83,6 +83,9 @@ pub struct ServoIpcBackend {
     session: Mutex<Option<String>>,
     tab_handles: RwLock<HashMap<String, String>>,
     active: Mutex<Option<String>>,
+    /// Viewport the shell last requested via `set_viewport` (window resize);
+    /// new tabs are brought up at this size so every tab matches the window.
+    viewport: RwLock<Option<(u32, u32)>>,
     adblock_enabled: std::sync::atomic::AtomicBool,
 }
 
@@ -146,6 +149,7 @@ impl ServoIpcBackend {
             session: Mutex::new(None),
             tab_handles: RwLock::new(HashMap::new()),
             active: Mutex::new(None),
+            viewport: RwLock::new(None),
             adblock_enabled: std::sync::atomic::AtomicBool::new(true),
         })
     }
@@ -268,6 +272,12 @@ impl EngineBackend for ServoIpcBackend {
         self.client.switch_window(&sid, &handle).map_err(Self::map_err)?;
         *self.active.lock().unwrap() = Some(handle.clone());
         self.tab_handles.write().unwrap().insert(tab_id.to_string(), handle);
+        // Match the window's current viewport: headless servoshell tabs start
+        // at a fixed 1024x740 and would letterbox/stretch into a resized
+        // window otherwise (v2.0.1 stretched-display fix).
+        if let Some((w, h)) = self.requested_viewport() {
+            let _ = self.client.set_window_rect(&sid, w, h);
+        }
         self.client.navigate(&sid, url).map_err(Self::map_err)?;
         Ok(())
     }
@@ -311,6 +321,31 @@ impl EngineBackend for ServoIpcBackend {
     fn viewport(&self, tab_id: &str) -> EngineResult<(u32, u32)> {
         let sid = self.ensure_focused(tab_id)?;
         self.client.window_rect(&sid).map_err(Self::map_err)
+    }
+
+    fn set_viewport(&self, w: u32, h: u32) -> EngineResult<()> {
+        let w = w.max(64);
+        let h = h.max(64);
+        *self.viewport.write().unwrap() = Some((w, h));
+        // Servo's WebDriver applies window/rect to the focused context only,
+        // so sweep every open tab; failures are best-effort (a closed or
+        // transiently-unsupported handle must not break the resize).
+        let sid = self.session()?;
+        let handles: Vec<String> = self.tab_handles.read().unwrap().values().cloned().collect();
+        let mut last_err = None;
+        for h_ in handles {
+            if let Err(e) = self.client.switch_window(&sid, &h_).and_then(|_| self.client.set_window_rect(&sid, w, h)) {
+                last_err = Some(e);
+            }
+        }
+        match last_err {
+            Some(e) => Err(Self::map_err(e)),
+            None => Ok(()),
+        }
+    }
+
+    fn requested_viewport(&self) -> Option<(u32, u32)> {
+        *self.viewport.read().unwrap()
     }
 
     fn focus(&self, tab_id: &str) -> EngineResult<()> {

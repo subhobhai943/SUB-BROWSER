@@ -217,6 +217,39 @@ percent-encoding. The GUI E2E smoke (`smoke`) asserts: engine spawn, session,
 navigation, stable title, PNG screenshot > 10 KB, viewport rect, adblock
 injection without JS error, back/forward/reload, tab close.
 
+## v2.0.1 fixes (2026-11-09)
+
+* **Homepage** — fresh profiles boot on the bundled SUB newtab
+  (`crates/sub-browser/newtab.html`, dark dragon page + search pill +
+  speed-dial; Android newtab ported bridge-free) served as a `data:` URL
+  (`src/newtab.rs`). Setting `homepage` overrides; Home button + new tabs +
+  last-tab-closed all route to it. servoshell headless renders data: URLs
+  natively (title + screenshot verified).
+* **Stretched display** — `EngineBackend::set_viewport` added:
+  - IPC: WebDriver `POST window/rect {width,height}` per tab (verified: inner
+    size + screenshot dims follow exactly); new tabs are brought up at the
+    window size at creation.
+  - embed: `SoftwareRenderingContext::resize` + `WebView::resize` on the
+    embed thread (`Cmd::Resize`).
+  - shell: `WindowEvent::Resized` → debounced `set_viewport(view-region
+    physical size)`; engine starts at the exact region size; UI safety net
+    `#frame{object-fit:contain}` (letterbox during a resize, never stretch).
+* **Smoothness** — capture loop is damage-aware: FNV-1a hash of the PNG
+    detects unchanged frames (skipped entirely — no base64/IPC), dirty pages
+    poll at ~30 fps (33 ms) instead of a flat 10 fps; static pages back off
+    to 150 ms. The per-frame decode is already double-buffered in the
+    toolbar (decode-then-swap `<img>` swap), so a slow capture never blocks
+    input handling.
+* **Linux release engine default** — `release.yml` still builds the Linux
+  shell with **default features only** (`cargo build --release`, no
+  `--features embed`), so shipped debs are **IPC-only**; `engine=embed` in
+  settings falls back to IPC with a stderr note. To make embed the packaged
+  default: (1) add `--features embed` to the Linux build step (servo-crate
+  compile ≈ hours on the runner; needs rust-cache or a prebuilt artifact),
+  (2) set the `embed` cargo feature default for the Linux profile or pass
+  the feature in the packaging script, (3) seed setting `engine=embed` on
+  first run. Not done here to keep CI check builds green.
+
 ## embed status (2026-11-09, v2.0.0)
 - `--features embed` compiles clean (glue fix: `set_adblock_enabled` moved onto the
   `EngineBackend` trait with a default no-op; IPC backend overrides it).
