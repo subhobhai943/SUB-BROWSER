@@ -4,88 +4,146 @@
 <meta charset="utf-8">
 <title>SUB-BROWSER</title>
 <style>
+  :root {
+    --accent: #29ABE2;
+    --bg: #050505;
+    --chip: #16202a;
+    --stroke: rgba(41,171,226,.25);
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
   html, body { height: 100%; overflow: hidden; }
   body {
-    background: #050505;
-    color: #e8e8e8;
-    font: 13px/1.3 "Segoe UI", system-ui, sans-serif;
+    background:
+      radial-gradient(600px 120px at 20% -40%, rgba(41,171,226,.10), transparent 70%),
+      var(--bg);
+    color: #dceaf2;
+    font: 13px/1.3 -apple-system, 'Roboto', 'Segoe UI', system-ui, sans-serif;
     display: flex; flex-direction: column;
   }
+
+  /* ---------- tab strip ---------- */
   #tabstrip {
-    height: 34px; display: flex; align-items: flex-end; gap: 4px;
-    padding: 0 8px; overflow-x: auto; overflow-y: hidden; flex: none;
+    height: 40px; display: flex; align-items: center; gap: 8px;
+    padding: 0 10px; overflow-x: auto; overflow-y: hidden; flex: none;
   }
-  .tabpill {
-    display: flex; align-items: center; gap: 6px; max-width: 220px; min-width: 120px;
-    height: 28px; padding: 0 8px 0 10px; border-radius: 8px 8px 0 0;
-    background: #101010; border: 1px solid #1d1d1d; border-bottom: none;
-    color: #9a9a9a; cursor: pointer; flex: none;
+  .chip {
+    display: flex; align-items: center; gap: 7px;
+    max-width: 210px; min-width: 96px; height: 30px; padding: 0 6px 0 12px;
+    border-radius: 15px; cursor: pointer; flex: none;
+    background: transparent; border: 1px solid #223038; color: #7d93a1;
+    transition: background .15s, border-color .15s, box-shadow .15s;
   }
-  .tabpill.active {
-    background: #0c1a21; border-color: #29ABE2; color: #fff;
-    box-shadow: 0 0 12px rgba(41,171,226,.25);
+  .chip:hover { border-color: var(--stroke); color: #b9d4e2; }
+  .chip.active {
+    background: var(--chip);
+    border: 1px solid var(--accent);
+    color: #fff;
+    box-shadow: 0 0 14px rgba(41,171,226,.35), inset 0 1px 0 rgba(255,255,255,.05);
   }
-  .tabpill .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tabpill .x {
-    flex: none; width: 16px; height: 16px; line-height: 15px; text-align: center;
-    border-radius: 4px; color: #777; font-size: 12px;
+  .chip .dot {
+    flex: none; width: 7px; height: 7px; border-radius: 50%;
+    background: #2c3d49;
   }
-  .tabpill .x:hover { background: #29ABE2; color: #050505; }
-  #newtab {
-    flex: none; width: 26px; height: 26px; margin-bottom: 1px; border-radius: 6px;
-    border: 1px solid #1d1d1d; background: #0b0b0b; color: #29ABE2;
+  .chip.active .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .chip .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+  .chip .x {
+    flex: none; width: 20px; height: 20px; line-height: 19px; text-align: center;
+    border-radius: 50%; color: #6b8391; font-size: 11px;
+  }
+  .chip .x:hover { background: var(--accent); color: #050505; }
+  #addtab {
+    flex: none; width: 30px; height: 30px; border-radius: 50%;
+    border: 1px dashed #2c3d49; background: transparent; color: var(--accent);
     font-size: 16px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
   }
-  #newtab:hover { border-color: #29ABE2; }
+  #addtab:hover { border-style: solid; border-color: var(--accent); background: rgba(41,171,226,.08); }
+  #addtab:active { transform: scale(.92); }
+
+  /* ---------- URL row ---------- */
   #urlrow {
-    height: 62px; display: flex; align-items: center; gap: 8px;
+    height: 56px; display: flex; align-items: center; gap: 4px;
     padding: 0 10px; flex: none;
-    border-top: 1px solid #141414;
+    border-top: 1px solid rgba(41,171,226,.08);
   }
-  .logo {
-    width: 44px; height: 44px; border-radius: 8px; flex: none;
-    background: #000; object-fit: contain;
+  .iconbtn {
+    position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%;
+    background: transparent; border: 0; color: #8fb6c9; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
   }
-  button.nav {
-    width: 34px; height: 34px; flex: none; border-radius: 8px;
-    background: #0c0c0c; border: 1px solid #222; color: #29ABE2;
-    font-size: 16px; cursor: pointer; line-height: 1;
+  .iconbtn:hover { background: rgba(41,171,226,.12); color: var(--accent); }
+  .iconbtn:active { background: rgba(41,171,226,.22); transform: scale(.93); }
+  .iconbtn svg { width: 21px; height: 21px; fill: currentColor; }
+  .iconbtn.off { color: #45555f; }
+  .iconbtn.off:hover { color: #6b8391; }
+  #badge {
+    position: absolute; top: 1px; right: 0px; min-width: 15px; height: 15px;
+    padding: 0 3px; border-radius: 8px; display: none;
+    background: linear-gradient(145deg,#2fb6ea,#1b8fc4); color: #04252f;
+    font: 700 9px/15px system-ui; text-align: center;
+    box-shadow: 0 0 8px rgba(41,171,226,.6);
   }
-  button.nav:hover { border-color: #29ABE2; background: #0e1b22; }
-  button.nav:active { transform: translateY(1px); }
+
+  #urlwrap { flex: 1; position: relative; min-width: 60px; }
+  #urlwrap .gico {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    width: 17px; height: 17px; fill: var(--accent); opacity: .55; pointer-events: none;
+  }
   #urlbar {
-    flex: 1; height: 36px; border-radius: 18px; padding: 0 14px;
-    background: #0b0b0b; border: 1px solid #262626; color: #ddd;
-    font: 13px/36px "Segoe UI", monospace; outline: none;
+    width: 100%; height: 40px; border-radius: 20px; padding: 0 16px 0 40px;
+    background: #0b1218; border: 1px solid #223038; color: #e6f2f8;
+    font: 13px/40px -apple-system, 'Roboto', monospace; outline: none;
     user-select: text;
+    transition: border-color .2s, box-shadow .2s;
   }
-  #urlbar:focus { border-color: #29ABE2; box-shadow: 0 0 0 2px rgba(41,171,226,.15); }
-  #brand {
-    flex: none; color: #29ABE2; font-weight: 700; letter-spacing: 1px;
-    font-size: 12px; margin-left: 4px; text-shadow: 0 0 8px rgba(41,171,226,.6);
+  #urlbar::placeholder { color: #4d626f; }
+  #urlbar:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(41,171,226,.16), 0 0 18px rgba(41,171,226,.12);
   }
-  ::-webkit-scrollbar { height: 6px; }
-  ::-webkit-scrollbar-thumb { background: #29ABE2; border-radius: 3px; }
+
+  ::-webkit-scrollbar { height: 5px; }
+  ::-webkit-scrollbar-thumb { background: rgba(41,171,226,.5); border-radius: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
 </style>
 </head>
 <body>
   <div id="tabstrip"></div>
   <div id="urlrow">
-    <img class="logo" src="logo.jpg" alt="SUB">
-    <span id="brand">SUB&#8209;BROWSER</span>
-    <button class="nav" id="back" title="Back">&#9664;</button>
-    <button class="nav" id="fwd" title="Forward">&#9654;</button>
-    <button class="nav" id="reload" title="Reload">&#10227;</button>
-    <input id="urlbar" spellcheck="false" placeholder="Search or enter address">
+    <button class="iconbtn" id="back" title="Back">
+      <svg viewBox="0 0 24 24"><path d="M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20z"/></svg>
+    </button>
+    <button class="iconbtn" id="fwd" title="Forward">
+      <svg viewBox="0 0 24 24"><path d="M4,11h12.17l-5.58,-5.59L12,4l8,8 -8,8 -1.41,-1.41L16.17,13H4z"/></svg>
+    </button>
+    <button class="iconbtn" id="reload" title="Reload">
+      <svg viewBox="0 0 24 24"><path d="M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.42,0 -7.99,3.58 -7.99,8s3.57,8 7.99,8c3.73,0 6.84,-2.55 7.73,-6h-2.08c-0.82,2.33 -3.04,4 -5.65,4 -3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6c1.66,0 3.14,0.69 4.22,1.78L13,11h7V4z"/></svg>
+    </button>
+    <button class="iconbtn" id="home" title="Home">
+      <svg viewBox="0 0 24 24"><path d="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"/></svg>
+    </button>
+    <div id="urlwrap">
+      <svg class="gico" viewBox="0 0 24 24"><path d="M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z"/></svg>
+      <input id="urlbar" spellcheck="false" placeholder="Search or enter address">
+    </div>
+    <button class="iconbtn" id="shield" title="Ad protection">
+      <svg viewBox="0 0 24 24"><path d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5z"/></svg>
+      <span id="badge"></span>
+    </button>
+    <button class="iconbtn" id="closetab" title="Close tab">
+      <svg viewBox="0 0 24 24"><path d="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"/></svg>
+    </button>
   </div>
 <script>
 (function () {
   var I = window.__TAURI_INTERNALS__;
   var tabs = {};      // label -> {url,title,active}
-  var order = [];     // label order of appearance
+  var order = [];
   var activeLabel = null;
   var userTyped = false;
+  var adEnabled = true;
+  var adCount = 0;
 
   function cmd(c, a) {
     if (!I) return;
@@ -99,16 +157,29 @@
     return u;
   }
 
+  function renderBadge() {
+    var b = document.getElementById('badge');
+    var s = document.getElementById('shield');
+    if (adEnabled && adCount > 0) {
+      b.style.display = 'block';
+      b.textContent = adCount > 999 ? '999+' : adCount;
+    } else {
+      b.style.display = 'none';
+    }
+    s.classList.toggle('off', !adEnabled);
+    s.title = adEnabled ? 'Ad protection ON — click to disable' : 'Ad protection OFF — click to enable';
+  }
+
   function render() {
     var strip = document.getElementById('tabstrip');
     strip.innerHTML = '';
     order.forEach(function (label) {
       var t = tabs[label];
       if (!t) return;
-      var pill = document.createElement('div');
-      pill.className = 'tabpill' + (label === activeLabel ? ' active' : '');
-      var txt = document.createElement('span');
-      txt.className = 't';
+      var chip = document.createElement('div');
+      chip.className = 'chip' + (label === activeLabel ? ' active' : '');
+      var dot = document.createElement('span'); dot.className = 'dot';
+      var txt = document.createElement('span'); txt.className = 't';
       txt.textContent = t.title
         ? t.title
         : (pretty(t.url).replace(/^https?:\/\//, '').replace(/\/$/, '') || 'New Tab');
@@ -119,14 +190,14 @@
         e.stopPropagation();
         cmd('close-tab', label);
       });
-      pill.appendChild(txt); pill.appendChild(x);
-      pill.addEventListener('click', function () { cmd('switch-tab', label); });
-      strip.appendChild(pill);
+      chip.appendChild(dot); chip.appendChild(txt); chip.appendChild(x);
+      chip.addEventListener('click', function () { cmd('switch-tab', label); });
+      strip.appendChild(chip);
     });
-    var plusBtn = document.createElement('button');
-    plusBtn.id = 'newtab'; plusBtn.textContent = '+'; plusBtn.title = 'New tab';
-    plusBtn.addEventListener('click', function () { cmd('new-tab'); });
-    strip.appendChild(plusBtn);
+    var plus = document.createElement('button');
+    plus.id = 'addtab'; plus.title = 'New tab'; plus.textContent = '\uFF0B';
+    plus.addEventListener('click', function () { cmd('new-tab'); });
+    strip.appendChild(plus);
     var a = tabs[activeLabel];
     var bar = document.getElementById('urlbar');
     if (!userTyped && a) bar.value = pretty(a.url);
@@ -162,15 +233,42 @@
       target: { kind: 'Any' },
       handler: I.transformCallback(function (e) { onState(e.payload); })
     }).catch(function () {});
+    I.invoke('plugin:event|listen', {
+      event: 'adblock-count',
+      target: { kind: 'Any' },
+      handler: I.transformCallback(function (e) {
+        var d = e.payload || {};
+        if (typeof d.count === 'number') adCount = d.count;
+        if (typeof d.enabled === 'boolean') adEnabled = d.enabled;
+        renderBadge();
+      })
+    }).catch(function () {});
     cmd('ready');
     render();
+    renderBadge();
   }
   boot();
 
   document.getElementById('back').addEventListener('click', function () { cmd('back'); });
   document.getElementById('fwd').addEventListener('click', function () { cmd('forward'); });
   document.getElementById('reload').addEventListener('click', function () { cmd('reload'); });
-  document.getElementById('newtab').addEventListener('click', function () { cmd('new-tab'); });
+  document.getElementById('home').addEventListener('click', function () { cmd('home'); });
+  document.getElementById('closetab').addEventListener('click', function () {
+    if (activeLabel) cmd('close-tab', activeLabel);
+  });
+  document.getElementById('shield').addEventListener('click', function () {
+    var next = !adEnabled;
+    var msg = next
+      ? 'Ad protection is ON (' + adCount + ' blocked).\n\nDisable ad protection?'
+      : 'Ad protection is OFF.\n\nEnable ad protection?';
+    if (confirm(msg)) {
+      adEnabled = next;
+      renderBadge();
+      cmd('toggle-adblock');
+    } else {
+      renderBadge();
+    }
+  });
   var bar = document.getElementById('urlbar');
   bar.addEventListener('input', function () { userTyped = bar.value !== ''; });
   bar.addEventListener('keydown', function (e) {

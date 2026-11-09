@@ -14,16 +14,17 @@
 //! window-event handlers and setup. `Window::add_child` is safe from any thread
 //! (dispatches to the main thread when the loop is running).
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 use serde::Serialize;
 use tauri::utils::config::Color;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{
     AppHandle, Emitter, Listener, LogicalPosition, LogicalSize, Manager, PhysicalPosition,
-    PhysicalSize, Rect, Url, Webview, WebviewUrl, Window, WindowEvent, Wry,
+    PhysicalSize, Rect, Runtime, Url, Webview, WebviewUrl, Window, WindowEvent, Wry,
 };
 
 const TOOLBAR_H: f64 = 96.0; // logical px: tab-strip row + URL row
@@ -42,12 +43,104 @@ struct TabInfo {
     event: String,
 }
 
+/// Embedded adblock blocklist (one registrable domain per line).
+const ADBLOCK_LIST: &str = include_str!("../adblock_domains.txt");
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AdblockPrefs {
+    enabled: bool,
+}
+
 struct AppState {
     tabs: Mutex<HashMap<String, Webview<Wry>>>,
     active: Mutex<Option<String>>,
     counter: AtomicUsize,
+    /// Ad navigations blocked (badge counter; `counter` generates tab labels).
+    blocked: AtomicUsize,
     user_agent: String,
     start_url: String,
+    ad_domains: HashSet<String>,
+    adblock_enabled: AtomicBool,
+    /// Exact URL most recently issued by the user via the URL bar, per tab.
+    last_user_urls: Mutex<HashMap<String, String>>,
+    /// Throttle for `adblock-count` emits (>= 500 ms between events).
+    last_badge: Mutex<Option<Instant>>,
+}
+
+static SHARED_STATE: OnceLock<Arc<AppState>> = OnceLock::new();
+static SHARED_APP: OnceLock<AppHandle<Wry>> = OnceLock::new();
+
+fn adblock_domains() -> HashSet<String> {
+    ADBLOCK_LIST
+        .lines()
+        .map(|l| l.trim().trim_start_matches('.').to_ascii_lowercase())
+        .filter(|l| !l.is_empty() && !l.starts_with('!') && l.contains('.'))
+        .collect()
+}
+
+/// Host-suffix match on dot boundaries: `ads.doubleclick.net` and
+/// `doubleclick.net` both match the list entry `doubleclick.net`.
+fn ad_blocked(domains: &HashSet<String>, host: &str) -> bool {
+    let h = host.trim_end_matches('.').to_ascii_lowercase();
+    let mut slice: &str = h.strip_prefix("www.").unwrap_or(&h);
+    loop {
+        if domains.contains(slice) {
+            return true;
+        }
+        match slice.find('.') {
+            Some(i) => slice = &slice[i + 1..],
+            None => return false,
+        }
+    }
+}
+
+fn adblock_file(app: &AppHandle<Wry>) -> Option<std::path::PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("adblock.json"))
+}
+
+fn load_adblock_pref(app: &AppHandle<Wry>) -> bool {
+    adblock_file(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str::<AdblockPrefs>(&s).ok())
+        .map(|p| p.enabled)
+        .unwrap_or(true)
+}
+
+fn save_adblock_pref(app: &AppHandle<Wry>, enabled: bool) {
+    if let Some(p) = adblock_file(app) {
+        if let Some(d) = p.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
+        if let Ok(s) = serde_json::to_string(&AdblockPrefs { enabled }) {
+            let _ = std::fs::write(p, s);
+        }
+    }
+}
+
+/// Emit blocked count + enabled flag to the toolbar, throttled to ~500 ms.
+/// Safe to call from navigation-callback threads.
+fn emit_adblock_count(app: &AppHandle<Wry>, force: bool) {
+    let state = match SHARED_STATE.get() {
+        Some(s) => s,
+        None => return,
+    };
+    {
+        let mut last = state.last_badge.lock().unwrap();
+        let now = Instant::now();
+        if !force {
+            if let Some(prev) = *last {
+                if now.duration_since(prev).as_millis() < 500 {
+                    return;
+                }
+            }
+        }
+        *last = Some(now);
+    }
+    let count = state.blocked.load(Ordering::Relaxed);
+    let enabled = state.adblock_enabled.load(Ordering::Relaxed);
+    let _ = app.emit_to("toolbar", "adblock-count", serde_json::json!({
+        "count": count, "enabled": enabled,
+    }));
 }
 
 fn urlenc(s: &str) -> String {
@@ -104,8 +197,12 @@ fn relayout(window: &Window<Wry>, app: &AppHandle<Wry>, state: &AppState) {
     }
 }
 
+fn state_of<M: Manager<R>, R: Runtime>(manager: &M) -> Arc<AppState> {
+    manager.state::<Arc<AppState>>().inner().clone()
+}
+
 fn is_active(app: &AppHandle<Wry>, label: &str) -> bool {
-    app.state::<AppState>().active.lock().unwrap().as_deref() == Some(label)
+    state_of(app).active.lock().unwrap().as_deref() == Some(label)
 }
 
 fn send(app: &AppHandle<Wry>, info: TabInfo) {
@@ -144,7 +241,7 @@ fn send_closed(app: &AppHandle<Wry>, label: &str) {
 
 /// Create a browsing webview tab. `url` may be a remote URL or the local new-tab page.
 fn create_tab(app: &AppHandle<Wry>, url: WebviewUrl) -> Result<String, String> {
-    let state = app.state::<AppState>();
+    let state = state_of(app);
     let window = app.get_window("main").ok_or("no main window")?;
     let n = state.counter.fetch_add(1, Ordering::SeqCst);
     let label = format!("tab-{}", n);
@@ -154,11 +251,40 @@ fn create_tab(app: &AppHandle<Wry>, url: WebviewUrl) -> Result<String, String> {
     let lab_pl = label.clone();
     let app_tl = app.clone();
     let lab_tl = label.clone();
+    let lab_nav = label.clone();
 
     let builder = WebviewBuilder::new(label.clone(), url)
         .user_agent(&ua)
         .background_color(DARK)
-        .on_navigation(|_u| true)
+        .on_navigation(move |u| {
+            // Ad-policy: block navigations whose host matches the embedded
+            // blocklist, except the exact URL the user typed into the URL bar
+            // for this tab (explicit user intent always wins).
+            let Some(state) = SHARED_STATE.get() else { return true };
+            if !state.adblock_enabled.load(Ordering::Relaxed) {
+                return true;
+            }
+            let host = u.host_str().unwrap_or("");
+            if host.is_empty() || !ad_blocked(&state.ad_domains, host) {
+                return true;
+            }
+            let allowed = state
+                .last_user_urls
+                .lock()
+                .unwrap()
+                .get(&lab_nav)
+                .map(|s| s == u.as_str())
+                .unwrap_or(false);
+            if allowed {
+                return true;
+            }
+            state.counter.fetch_add(1, Ordering::Relaxed);
+            state.blocked.fetch_add(1, Ordering::Relaxed);
+            if let Some(app) = SHARED_APP.get() {
+                emit_adblock_count(app, false);
+            }
+            false
+        })
         .on_page_load(move |_wv, payload| {
             if matches!(payload.event(), PageLoadEvent::Finished) {
                 send_url(&app_pl, &lab_pl, payload.url().as_str());
@@ -183,7 +309,7 @@ fn home_url() -> WebviewUrl {
 }
 
 fn show_only(app: &AppHandle<Wry>, label: &str) {
-    let state = app.state::<AppState>();
+    let state = state_of(app);
     {
         let tabs = state.tabs.lock().unwrap();
         for (l, wv) in tabs.iter() {
@@ -208,7 +334,7 @@ fn show_only(app: &AppHandle<Wry>, label: &str) {
 }
 
 fn active_tab(app: &AppHandle<Wry>) -> Option<Webview<Wry>> {
-    let state = app.state::<AppState>();
+    let state = state_of(app);
     let l = state.active.lock().unwrap().clone()?;
     let wv = { let tabs = state.tabs.lock().unwrap(); tabs.get(&l).cloned() };
     wv
@@ -234,13 +360,21 @@ fn main() {
                 .or_else(|| std::env::var("SUB_START_URL").ok())
                 .unwrap_or_else(|| "https://example.com".to_string());
 
-            app.manage(AppState {
+            let state_arc = Arc::new(AppState {
                 tabs: Mutex::new(HashMap::new()),
                 active: Mutex::new(None),
                 counter: AtomicUsize::new(0),
+                blocked: AtomicUsize::new(0),
                 user_agent: ua,
                 start_url,
+                ad_domains: adblock_domains(),
+                adblock_enabled: AtomicBool::new(load_adblock_pref(&handle)),
+                last_user_urls: Mutex::new(HashMap::new()),
+                last_badge: Mutex::new(None),
             });
+            app.manage(state_arc.clone());
+            SHARED_STATE.set(state_arc).ok();
+            SHARED_APP.set(handle.clone()).ok();
 
             let window = Window::builder(app.handle(), "main")
                 .inner_size(W, H)
@@ -262,7 +396,7 @@ fn main() {
 
             // First browsing tab at the start URL
             let first = {
-                let st = app.state::<AppState>();
+                let st = state_of(&*app);
                 normalize_url(&st.start_url.clone())
             };
             let label = create_tab(&handle, WebviewUrl::External(first))?;
@@ -270,7 +404,7 @@ fn main() {
             if let Some(wv) = active_tab(&handle) {
                 let _ = wv.set_focus();
             }
-            relayout(&window, &handle, &app.state::<AppState>());
+            relayout(&window, &handle, &state_of(&handle));
             // Headless/some WMs ignore show during setup; re-show after the
             // event loop is running via a short-lived helper thread.
             let wshow = window.clone();
@@ -287,7 +421,7 @@ fn main() {
             let h1 = handle.clone();
             window.on_window_event(move |event| {
                 if let WindowEvent::Resized(_) = event {
-                    let st = win2.state::<AppState>();
+                    let st = state_of(&win2);
                     relayout(&win2, &h1, &st);
                 }
             });
@@ -301,10 +435,10 @@ fn main() {
                 let arg = p.get("arg").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let app = h.clone();
                 std::thread::spawn(move || {
-                    let state = app.state::<AppState>();
+                    let state = state_of(&app);
                     match cmd.as_str() {
                         "ready" => {
-                            // toolbar (re)loaded: replay full tab map
+                            // toolbar (re)loaded: replay full tab map + badge state
                             let tabs = state.tabs.lock().unwrap();
                             for (l, wv) in tabs.iter() {
                                 let u = wv.url().map(|u| u.to_string()).unwrap_or_default();
@@ -316,11 +450,37 @@ fn main() {
                                     event: "meta".into(),
                                 });
                             }
+                            drop(tabs);
+                            emit_adblock_count(&app, true);
                         }
                         "navigate" => {
-                            if let Some(wv) = active_tab(&app) {
-                                let _ = wv.navigate(normalize_url(&arg));
+                            let url = normalize_url(&arg);
+                            if let Some(l) = state.active.lock().unwrap().clone() {
+                                state
+                                    .last_user_urls
+                                    .lock()
+                                    .unwrap()
+                                    .insert(l.clone(), url.as_str().to_string());
+                                if let Some(wv) = state.tabs.lock().unwrap().get(&l).cloned() {
+                                    let _ = wv.navigate(url);
+                                }
                             }
+                        }
+                        "home" => {
+                            if let Some(wv) = active_tab(&app) {
+                                // Same origin as the toolbar (local app host), path -> newtab.
+                                if let Some(tb) = app.get_webview("toolbar") {
+                                    if let Ok(mut u) = tb.url() {
+                                        u.set_path(&format!("/{}", HOME_PAGE));
+                                        let _ = wv.navigate(u);
+                                    }
+                                }
+                            }
+                        }
+                        "toggle-adblock" => {
+                            let now = !state.adblock_enabled.fetch_xor(true, Ordering::SeqCst);
+                            save_adblock_pref(&app, now);
+                            emit_adblock_count(&app, true);
                         }
                         "new-tab" => {
                             if let Ok(l) = create_tab(&app, home_url()) {

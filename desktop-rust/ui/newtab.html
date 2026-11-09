@@ -2,62 +2,141 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>New Tab</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
-  body {
-    background:
-      radial-gradient(900px 500px at 70% -10%, rgba(41,171,226,.12), transparent 60%),
-      #050505;
-    color: #e8e8e8;
-    font: 14px "Segoe UI", system-ui, sans-serif;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 26px; user-select: none;
-  }
-  img { width: 170px; height: 170px; border-radius: 24px; box-shadow: 0 0 40px rgba(41,171,226,.25); }
-  h1 { font-size: 26px; letter-spacing: 4px; color: #fff; }
-  h1 span { color: #29ABE2; text-shadow: 0 0 14px rgba(41,171,226,.7); }
-  #q {
-    width: min(560px, 86%); height: 46px; border-radius: 23px; padding: 0 20px;
-    background: #0b0b0b; color: #ddd; border: 1px solid #262626; outline: none;
-    font-size: 14px;
-  }
-  #q:focus { border-color: #29ABE2; box-shadow: 0 0 0 3px rgba(41,171,226,.15); }
-  .links { display: flex; gap: 18px; }
-  .links a {
-    color: #8ab9cc; text-decoration: none; font-size: 12px; padding: 6px 12px;
-    border: 1px solid #1d1d1d; border-radius: 8px; background: #0a0a0a;
-  }
-  .links a:hover { border-color: #29ABE2; color: #29ABE2; }
-  .foot { color: #3b3b3b; font-size: 11px; letter-spacing: 2px; }
+:root{
+  --accent:#29ABE2;
+  --bg:#050505;
+  --card:#111820;
+  --stroke:rgba(41,171,226,.25);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:#e8f4fa;
+  font-family:-apple-system,'Roboto','Segoe UI',sans-serif}
+body{
+  background:
+    radial-gradient(900px 480px at 50% -10%, rgba(41,171,226,.14), transparent 60%),
+    radial-gradient(700px 500px at 85% 110%, rgba(41,171,226,.07), transparent 60%),
+    linear-gradient(rgba(41,171,226,.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(41,171,226,.032) 1px, transparent 1px),
+    var(--bg);
+  background-size:auto,auto,36px 36px,36px 36px,auto;
+  display:flex;flex-direction:column;align-items:center;
+  padding:min(9vh,80px) 20px 40px;
+}
+.logo{
+  width:120px;height:120px;border-radius:34px;object-fit:cover;
+  box-shadow:0 0 60px rgba(41,171,226,.35);
+  border:1px solid rgba(41,171,226,.28);
+  background:#0a0f14;
+}
+.word{
+  margin-top:20px;color:var(--accent);
+  font-size:26px;font-weight:700;letter-spacing:8px;text-indent:8px;
+  text-shadow:0 0 26px rgba(41,171,226,.5);
+}
+.tagline{margin-top:7px;color:#5a7080;font-size:12px;letter-spacing:2px;text-transform:uppercase}
+.search{margin-top:34px;width:min(500px,92%);position:relative}
+.search input{
+  width:100%;height:56px;border-radius:28px;
+  background:#111820;border:1px solid var(--stroke);
+  color:#fff;font-size:16px;padding:0 58px 0 52px;outline:none;
+  box-shadow:0 6px 26px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04);
+  transition:border-color .2s, box-shadow .2s;
+}
+.search input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(41,171,226,.18), 0 8px 30px rgba(0,0,0,.5);
+}
+.search .ico{position:absolute;left:18px;top:17px;width:22px;height:22px;opacity:.55}
+.search .go{
+  position:absolute;right:8px;top:8px;width:40px;height:40px;border-radius:50%;
+  background:linear-gradient(145deg,#2fb6ea,#1b8fc4);border:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 3px 14px rgba(41,171,226,.4);
+}
+.grid{
+  margin-top:44px;width:min(500px,94%);
+  display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
+}
+@media (min-width:480px){.grid{grid-template-columns:repeat(6,1fr)}}
+.tile{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  background:linear-gradient(160deg,#121a23,#0d1218);
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:14px;padding:16px 6px 14px;
+  text-decoration:none;color:#cfe3ee;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);
+  transition:transform .12s, border-color .2s;
+  cursor:pointer;
+}
+.tile:hover{border-color:var(--stroke)}
+.tile:active{transform:scale(.95);border-color:var(--accent)}
+.avatar{
+  width:44px;height:44px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;font-weight:700;color:#fff;
+  box-shadow:0 2px 10px rgba(0,0,0,.5);
+}
+.name{font-size:11.5px;letter-spacing:.4px;color:#8ea6b5}
+.foot{margin-top:46px;color:#31404c;font-size:11px;letter-spacing:1px}
 </style>
 </head>
 <body>
-  <img src="logo.jpg" alt="SUB-BROWSER">
-  <h1><span>SUB</span>-BROWSER</h1>
-  <input id="q" placeholder="Search the web or enter an address" autofocus spellcheck="false">
-  <div class="links">
-    <a href="https://example.com">example.com</a>
-    <a href="https://duckduckgo.com">DuckDuckGo</a>
-    <a href="https://webkit.org">WebKit</a>
-    <a href="https://rust-lang.org">Rust</a>
-    <a href="https://tauri.app">Tauri</a>
+  <img class="logo" src="logo.jpg" alt="SUB">
+  <div class="word">SUB-BROWSER</div>
+  <div class="tagline">fast &middot; private &middot; yours</div>
+
+  <div class="search">
+    <svg class="ico" viewBox="0 0 24 24" fill="#29ABE2"><path d="M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z"/></svg>
+    <input id="q" placeholder="Search or type a URL" autofocus spellcheck="false">
+    <button class="go" id="gobtn" aria-label="Go">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12,4l-1.41,1.41L16.17,11H4v2h12.17l-5.58,5.59L12,20l8,-8z"/></svg>
+    </button>
   </div>
-  <div class="foot">POWERED BY RUST · WEBKITGTK · SUBBROWSER/1.0</div>
+
+  <div class="grid">
+    <a class="tile" data-url="https://www.google.com"><span class="avatar" style="background:linear-gradient(145deg,#4285F4,#0f67c7)">G</span><span class="name">Google</span></a>
+    <a class="tile" data-url="https://www.youtube.com"><span class="avatar" style="background:linear-gradient(145deg,#ff4040,#c60000)">&#9654;</span><span class="name">YouTube</span></a>
+    <a class="tile" data-url="https://github.com"><span class="avatar" style="background:linear-gradient(145deg,#3a424c,#171b20)">&#8962;</span><span class="name">GitHub</span></a>
+    <a class="tile" data-url="https://www.reddit.com"><span class="avatar" style="background:linear-gradient(145deg,#ff6a3d,#c03c12)">R</span><span class="name">Reddit</span></a>
+    <a class="tile" data-url="https://www.wikipedia.org"><span class="avatar" style="background:linear-gradient(145deg,#9aa4ad,#4c565e)">W</span><span class="name">Wikipedia</span></a>
+    <a class="tile" data-url="https://x.com"><span class="avatar" style="background:linear-gradient(145deg,#3b3b3b,#0c0c0c)">X</span><span class="name">X</span></a>
+  </div>
+
+  <div class="foot">&#128737; Built-in ad protection active &middot; SUB-BROWSER</div>
 <script>
 (function () {
   var I = window.__TAURI_INTERNALS__;
-  function go(u) {
-    if (!I) return;
-    I.invoke('plugin:event|emit', { event: 'sub-cmd', payload: { cmd: 'navigate', arg: String(u) } }).catch(function(){});
+
+  // Route through the toolbar command bus when available (keeps the Rust side
+  // authoritative about the active tab + URL bar); fall back to navigating
+  // this webview directly if the bridge is not up yet.
+  function nav(u) {
+    if (I) {
+      I.invoke('plugin:event|emit', { event: 'sub-cmd', payload: { cmd: 'navigate', arg: String(u) } })
+        .catch(function () { location.href = u; });
+    } else {
+      location.href = u;
+    }
   }
-  var q = document.getElementById('q');
-  q.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && q.value.trim()) go(q.value);
-  });
-  document.querySelectorAll('.links a').forEach(function (a) {
-    a.addEventListener('click', function (e) { e.preventDefault(); go(a.href); });
+
+  function go() {
+    var v = document.getElementById('q').value.trim();
+    if (!v) return;
+    if (/^(https?:\/\/)/i.test(v) || (/[\w-]+\.[a-z]{2,}(\/\S*)?$/i.test(v) && !/\s/.test(v))) {
+      if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+      nav(v);
+    } else {
+      nav('https://www.google.com/search?q=' + encodeURIComponent(v));
+    }
+  }
+
+  document.getElementById('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+  document.getElementById('gobtn').addEventListener('click', go);
+  document.querySelectorAll('.tile').forEach(function (t) {
+    t.addEventListener('click', function (e) { e.preventDefault(); nav(t.getAttribute('data-url')); });
   });
 })();
 </script>
