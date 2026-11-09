@@ -2,34 +2,51 @@
 
 A fast, minimal, dragon-themed web browser. **GPL-3.0** licensed.
 
-Two builds from one identity (`SUBBrowser/1.0` in every User-Agent):
-
-| | Engine | Stack | Where |
-|---|---|---|---|
-| **Desktop** | Chromium (Electron 45) | JS/HTML/CSS | Windows / Linux / macOS |
-| **Android** | System WebView (Chromium) | Java | Android 7.0+ |
+> **Apps:** Desktop — Windows / Linux / macOS · Android — 7.0+
+> Every page you visit announces you as `SUBBrowser/1.0`.
 
 ## Features
-- Multi-tab (Ctrl+T / Ctrl+W, tab chips with close)
-- Smart address bar — URL direct, anything else → Google
-- Custom new-tab page with SUB dragon branding + search
-- Dark theme (`#050505` + dragon blue `#29ABE2`)
-- Sandboxed tab content, contextIsolated shell, persisted profile
+- 🗂 **Multi-tab** — Ctrl+T / Ctrl+W, tab chips with one-tap close
+- 🔍 **Smart address bar** — type a URL to go direct, anything else becomes a Google search
+- 🐉 **Custom new-tab page** — SUB dragon branding + search, dark gradient
+- 🌑 **Dark dragon theme** — `#050505` base, `#29ABE2` dragon-blue accents
+- 🔒 **Sandboxed tab content**, context-isolated shell, persisted profile
+- 📲 Android: opens external http/https links, installable as default browser candidate
 
-## Desktop
+## Engines
+
+| Platform | Engine | Notes |
+|---|---|---|
+| Desktop | Chromium (Electron 45) | Full modern web platform |
+| Android | Bundled engine — zero system dependency | Ships its own engine inside the APK |
+
+The engine is an implementation detail — the app is simply **SUB-BROWSER**, everywhere.
+
+## Build from source
+
+### Desktop (Windows / Linux / macOS)
 ```bash
 cd desktop
-npm install
-npm start          # requires a display
-npm run smoke      # headless verification (needs xvfb)
+npm install        # downloads the engine (~110 MB, first time)
+npm start          # run (needs a display)
+npm run smoke      # headless self-test (xvfb)
 npm run dist:linux # AppImage
 ```
 
-## Android
+### Android (no Gradle needed)
 ```bash
 cd android
-ANDROID_HOME=/path/to/sdk bash build.sh   # no Gradle: aapt2 + javac + d8 + apksigner
-# → build/SUB-BROWSER-1.0.apk (~70KB; engine comes from the OS WebView)
+ANDROID_HOME=/path/to/android-sdk bash build.sh
+# → build/SUB-BROWSER-1.0.apk
+```
+Toolchain: Android SDK build-tools 34, JDK 17, aapt2 + javac + d8 + zipalign + apksigner.
+A debug keystore is expected at `$ANDROID_HOME/debug.jks` (see build.sh).
+
+## Repo layout
+```
+desktop/    Electron browser (main.js, renderer/, assets/)
+android/    Android browser app + build.sh (aapt2/d8 pipeline)
+LICENSE     GNU GPL v3
 ```
 
 ## License
