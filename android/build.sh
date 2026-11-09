@@ -20,6 +20,8 @@ echo "== fetch artifacts"
 fetch https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview-omni-arm64-v8a/$V/geckoview-omni-arm64-v8a-$V.aar $G/geckoview-arm64-v8a.aar
 fetch https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview-omni-x86_64/$V/geckoview-omni-x86_64-$V.aar $G/geckoview-x86_64.aar
 fetch https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.20/kotlin-stdlib-2.4.20.jar $G/deps/kotlin-stdlib.jar
+# snakeyaml: optional GeckoView dep needed by DebugConfig when the app is debuggable
+fetch https://repo1.maven.org/maven2/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar $G/deps/snakeyaml.jar
 fetch https://repo1.maven.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0.jar $G/deps/annotations-13.0.jar
 fetch https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.11.0/annotation-jvm-1.11.0.jar $G/deps/androidx-annotation-jvm.jar
 fetch https://dl.google.com/dl/android/maven2/androidx/collection/collection-jvm/1.6.0/collection-jvm-1.6.0.jar $G/deps/androidx-collection-jvm.jar
@@ -94,7 +96,7 @@ $BT/aapt2 link -o $B/app.unsigned.apk -I $AJ --manifest $A/AndroidManifest.xml \
 
 echo "== gather engine + dep jars"
 JARS="$G/aar-x86_64/classes.jar"
-JARS="$JARS $G/deps/kotlin-stdlib.jar $G/deps/annotations-13.0.jar"
+JARS="$JARS $G/deps/kotlin-stdlib.jar $G/deps/annotations-13.0.jar $G/deps/snakeyaml.jar"
 JARS="$JARS $G/deps/androidx-annotation-jvm.jar $G/deps/androidx-collection-jvm.jar"
 JARS="$JARS $G/deps/androidx-lifecycle-common.jar $G/deps/androidx-arch-core-common.jar $G/deps/androidx-concurrent-futures.jar"
 JARS="$JARS $G/deps/guava.jar $G/deps/failureaccess.jar $G/deps/kotlinx-coroutines-core.jar $G/deps/kotlinx-coroutines-android.jar"
@@ -128,7 +130,7 @@ done
 echo "== zipalign + sign"
 $BT/zipalign -f 4 $B/app.unsigned.apk $B/app.aligned.apk
 $BT/apksigner sign --ks $SDK/debug.jks --ks-pass pass:android --key-pass pass:android \
-  --out $B/SUB-BROWSER-1.0.apk $B/app.aligned.apk
-$BT/apksigner verify $B/SUB-BROWSER-1.0.apk && echo SIGN_OK
-ls -la $B/SUB-BROWSER-1.0.apk
+  --out $B/SUB-BROWSER-2.0.apk $B/app.aligned.apk
+$BT/apksigner verify $B/SUB-BROWSER-2.0.apk && echo SIGN_OK
+ls -la $B/SUB-BROWSER-2.0.apk
 echo "APK_BUILD_OK"
