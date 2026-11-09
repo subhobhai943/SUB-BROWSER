@@ -237,6 +237,7 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail   # NOT -e: MSI failure falls back to bare exe, job must exit 0
+          set +e             # runner bash starts with -e; disable it for this fallback step
           choco install wixtoolset -y
           export PATH="/c/Program Files (x86)/WiX Toolset v3.14/bin:${PATH:-}"
           # absolute SourceDir: light resolves relative paths against cwd which

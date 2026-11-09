@@ -33,7 +33,9 @@ fi
 
 mkdir -p "$DIST_DIR"
 WXS="$DIST_DIR/sub-browser.wxs"
-MAJOR="$(echo "$VERSION" | cut -d. -f1)"; MINOR="$(echo "$VERSION" | cut -d. -f2)"; PATCH="$(echo "$VERSION" | cut -d. -f3)"; PATCH="${PATCH:-0}"
+MAJOR="$(echo "$VERSION" | cut -d. -f1 | tr -dc '0-9')"; MINOR="$(echo "$VERSION" | cut -d. -f2 | tr -dc '0-9')"; PATCH="$(echo "$VERSION" | cut -d. -f3 | tr -dc '0-9')"
+# WiX Product/@Version must be x.x.x.x with integers 0-65534; strip junk like "ci" suffix
+MAJOR="${MAJOR:-0}"; MINOR="${MINOR:-0}"; PATCH="${PATCH:-0}"
 
 cat > "$WXS" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -164,15 +166,17 @@ cat <<EOF
 This box: $(uname -s) — no WiX; artifact produced is the .wxs template only.
 EOF
 
-# If exe is staged and WiX present, actually build:
+# If exe is staged and WiX present, actually build (best-effort: caller may
+# run candle/light itself; never abort the script on failure here):
 if [ -n "${WIX3:-}${WIX5:-}" ] && [ -f "$STAGING/sub-browser.exe" ]; then
   ( cd "$(dirname "$WXS")"
     if [ -n "${WIX3:-}" ]; then
-      candle.exe -arch x64 -dSourceDir="$STAGING" -dVersion="$VERSION" sub-browser.wxs
-      light.exe -ext WixUIExtension -o "sub-browser-$VERSION-x64.msi" sub-browser.wixobj
+      candle.exe -arch x64 -dSourceDir="$STAGING" -dVersion="$VERSION" sub-browser.wxs \
+        && light.exe -ext WixUIExtension -ext WixUtilExtension -o "sub-browser-$VERSION-x64.msi" sub-browser.wixobj
     else
       wix build sub-browser.wxs -arch x64 -d SourceDir="$STAGING" -d Version="$VERSION" \
         -ext WixToolset.Util.wixext -ext WixToolset.UI.wixext -o "sub-browser-$VERSION-x64.msi"
-    fi )
-  echo "== built: $(pwd)/$(dirname "$WXS")/sub-browser-$VERSION-x64.msi"
+    fi ) || echo "::warning::in-script MSI build failed (caller may retry with its own candle/light)"
+  echo "== msi (if built): $(pwd)/$(dirname "$WXS")/sub-browser-$VERSION-x64.msi"
 fi
+exit 0
