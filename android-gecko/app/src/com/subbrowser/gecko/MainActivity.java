@@ -1,6 +1,7 @@
 package com.subbrowser.gecko;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -21,6 +22,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.mozilla.geckoview.AllowOrDeny;
+import org.mozilla.geckoview.ContentBlocking;
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
@@ -44,6 +47,7 @@ public class MainActivity extends Activity {
     private EditText urlBar;
     private ImageView backBtn, fwdBtn;
     private LinearLayout tabStrip;
+    private TextView shieldBadge;
     private final List<GeckoSession> tabs = new ArrayList<>();
     private int current = -1;
     private Typeface tfBold;
@@ -57,9 +61,21 @@ public class MainActivity extends Activity {
             tfBold = Typeface.createFromAsset(getAssets(), "fonts/Poppins-Bold.ttf");
         } catch (Exception e) { tfBold = Typeface.DEFAULT_BOLD; }
 
+        AdBlock.load(this);
         if (runtime == null) {
             runtime = GeckoRuntime.create(getApplication(),
-                new GeckoRuntimeSettings.Builder().build());
+                new GeckoRuntimeSettings.Builder()
+                    .contentBlocking(new ContentBlocking.Settings.Builder()
+                        .enhancedTrackingProtectionLevel(
+                            ContentBlocking.EtpLevel.STRICT)
+                        .enhancedTrackingProtectionCategory(
+                            ContentBlocking.EtpCategory.STRICT)
+                        .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS)
+                        .cookieBehaviorPrivateMode(ContentBlocking.CookieBehavior.ACCEPT_NONE)
+                        .strictSocialTrackingProtection(true)
+                        .cookiePurging(true)
+                        .build())
+                    .build());
         }
 
         int bg = Color.parseColor("#050505");
@@ -146,6 +162,28 @@ public class MainActivity extends Activity {
         plus.setOnClickListener(v -> newTab());
         row.addView(plus, lp(dp(40 * dp), dp(40 * dp), 0, dp(4 * dp)));
 
+        // shield badge: tap opens adblock toggle dialog
+        FrameLayout shieldWrap = new FrameLayout(this);
+        ImageView shield = new ImageView(this);
+        shield.setImageResource(R.drawable.ic_shield);
+        shield.setBackgroundResource(R.drawable.icon_btn_bg);
+        shield.setPadding(dp(8 * dp), dp(8 * dp), dp(8 * dp), dp(8 * dp));
+        shield.setOnClickListener(v -> showAdblockDialog());
+        shieldWrap.addView(shield, new FrameLayout.LayoutParams(dp(40 * dp), dp(40 * dp)));
+        shieldBadge = new TextView(this);
+        shieldBadge.setTextColor(Color.WHITE);
+        shieldBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
+        shieldBadge.setTypeface(tfBold);
+        shieldBadge.setGravity(Gravity.CENTER);
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setShape(GradientDrawable.OVAL);
+        badgeBg.setColor(Color.parseColor("#29ABE2"));
+        shieldBadge.setBackground(badgeBg);
+        FrameLayout.LayoutParams bfp = new FrameLayout.LayoutParams(dp(18 * dp), dp(18 * dp));
+        bfp.gravity = Gravity.TOP | Gravity.END;
+        shieldWrap.addView(shieldBadge, bfp);
+        row.addView(shieldWrap, lp(dp(40 * dp), dp(40 * dp), 0, dp(4 * dp)));
+
         root.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
         FrameLayout content = new FrameLayout(this);
@@ -175,6 +213,37 @@ public class MainActivity extends Activity {
                 focused ? Color.parseColor("#29ABE2") : Color.parseColor("#1e2a35"));
         pill.setBackground(bg);
         pill.setElevation(dp(focused ? 6 * dp : 0));
+    }
+
+    private void updateShield() {
+        runOnUiThread(() -> {
+            int n = AdBlock.blockedCount(this);
+            boolean on = AdBlock.enabled(this);
+            if (n > 0 && on) {
+                shieldBadge.setText(String.valueOf(n));
+                shieldBadge.setVisibility(View.VISIBLE);
+            } else {
+                shieldBadge.setVisibility(View.GONE);
+            }
+        });
+    }
+
+    private void showAdblockDialog() {
+        final boolean was = AdBlock.enabled(this);
+        String msg = (AdBlock.ruleCount() + " rules loaded\n\n"
+                + AdBlock.blockedCount(this) + " blocked today\n\n"
+                + "Status: " + (was ? "ON" : "OFF"));
+        new AlertDialog.Builder(this)
+            .setTitle("Adblocker")
+            .setMessage(msg)
+            .setPositiveButton(was ? "Turn OFF" : "Turn ON", (d, w) -> {
+                AdBlock.setEnabled(this, !was);
+                Toast.makeText(this, "Adblocker " + (!was ? "ON" : "OFF"),
+                        Toast.LENGTH_SHORT).show();
+                updateShield();
+            })
+            .setNegativeButton("Close", null)
+            .show();
     }
 
     private ImageView iconButton(int res, View.OnClickListener l) {
@@ -225,6 +294,7 @@ public class MainActivity extends Activity {
         s.setContentDelegate(new ContentDelegate());
         s.setProgressDelegate(new ProgressDelegate());
         s.setNavigationDelegate(new NavigationDelegate());
+        s.setContentBlockingDelegate(new ContentBlockingDelegate());
         s.open(runtime);
         return s;
     }
@@ -360,7 +430,47 @@ public class MainActivity extends Activity {
 
     // ---------------- delegates ----------------
 
+    private GeckoResult<AllowOrDeny> intercept(String uri) {
+        if (!AdBlock.enabled(this) || uri == null) return null;
+        try {
+            String host = Uri.parse(uri).getHost();
+            if (host != null && AdBlock.matches(host)) {
+                AdBlock.addBlocked(this);
+                updateShield();
+                android.util.Log.i("adblock", "blocked " + host);
+                return GeckoResult.fromValue(AllowOrDeny.DENY);
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
+    private class ContentBlockingDelegate implements ContentBlocking.Delegate {
+        @Override
+        public void onContentBlocked(GeckoSession session,
+                ContentBlocking.BlockEvent event) {
+            if (!AdBlock.enabled(MainActivity.this)) return;
+            AdBlock.addBlocked(MainActivity.this);
+            updateShield();
+        }
+    }
+
     private class NavigationDelegate implements GeckoSession.NavigationDelegate {
+        @Override
+        public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession session,
+                LoadRequest request) {
+            // never block the main-frame page the user typed
+            if (request.triggerUri == null && request.hasUserGesture) {
+                return GeckoResult.fromValue(AllowOrDeny.ALLOW);
+            }
+            GeckoResult<AllowOrDeny> r = intercept(request.uri);
+            return r != null ? r : GeckoResult.fromValue(AllowOrDeny.ALLOW);
+        }
+        @Override
+        public GeckoResult<AllowOrDeny> onSubframeLoadRequest(GeckoSession session,
+                LoadRequest request) {
+            GeckoResult<AllowOrDeny> r = intercept(request.uri);
+            return r != null ? r : GeckoResult.fromValue(AllowOrDeny.ALLOW);
+        }
         @Override
         public void onLocationChange(GeckoSession session, String url,
                 java.util.List<GeckoSession.PermissionDelegate.ContentPermission> perms,

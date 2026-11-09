@@ -1,6 +1,7 @@
 package com.subbrowser.app;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -19,9 +20,12 @@ import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,12 +38,13 @@ public class MainActivity extends Activity {
     List<WebView> tabs = new ArrayList<>();
     int cur = -1;
     LinearLayout tabStrip; FrameLayout pageArea; EditText urlBar;
-    ImageView backBtn, fwdBtn;
+    ImageView backBtn, fwdBtn; TextView shieldBadge;
     Typeface tfBold, tfSemi;
     boolean pillFocused = false;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        AdBlock.load(this);
         try {
             tfBold = Typeface.createFromAsset(getAssets(), "fonts/Poppins-Bold.ttf");
             tfSemi = Typeface.createFromAsset(getAssets(), "fonts/Poppins-ExtraBold.ttf");
@@ -117,12 +122,35 @@ public class MainActivity extends Activity {
         plp.setMargins(dp(4), 0, dp(0), 0);
         bar.addView(plus, plp);
 
+        // shield badge with blocked-count overlay
+        FrameLayout shieldWrap = new FrameLayout(this);
+        ImageView shield = new ImageView(this);
+        shield.setImageResource(R.drawable.ic_shield);
+        shield.setBackgroundResource(R.drawable.icon_btn_bg);
+        shield.setPadding(dp(8), dp(8), dp(8), dp(8));
+        shield.setOnClickListener(v -> showAdblockDialog());
+        shieldWrap.addView(shield, new FrameLayout.LayoutParams(dp(40), dp(40)));
+        shieldBadge = new TextView(this);
+        shieldBadge.setTextColor(Color.WHITE);
+        shieldBadge.setTextSize(9);
+        shieldBadge.setTypeface(tfBold);
+        shieldBadge.setGravity(Gravity.CENTER);
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setShape(GradientDrawable.OVAL);
+        badgeBg.setColor(BLUE);
+        shieldBadge.setBackground(badgeBg);
+        FrameLayout.LayoutParams bfp = new FrameLayout.LayoutParams(dp(18), dp(18));
+        bfp.gravity = Gravity.TOP | Gravity.END;
+        shieldWrap.addView(shieldBadge, bfp);
+        bar.addView(shieldWrap, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
         root.addView(bar, new LinearLayout.LayoutParams(-1, -2));
 
         pageArea = new FrameLayout(this);
         root.addView(pageArea, new LinearLayout.LayoutParams(-1, -1, 1f));
 
         setContentView(root);
+        updateShield();
         newTab();
     }
 
@@ -134,6 +162,39 @@ public class MainActivity extends Activity {
         bg.setStroke(dp(focused ? 2 : 1), focused ? BLUE : PILL_STROKE);
         pill.setBackground(bg);
         pill.setElevation(dp(focused ? 6 : 0));
+    }
+
+    private void updateShield() {
+        runOnUiThread(() -> {
+            int n = AdBlock.blockedCount(this);
+            if (n > 0 && AdBlock.enabled(this)) {
+                shieldBadge.setText(String.valueOf(n));
+                shieldBadge.setVisibility(View.VISIBLE);
+            } else shieldBadge.setVisibility(View.GONE);
+        });
+    }
+
+    private void showAdblockDialog() {
+        final boolean was = AdBlock.enabled(this);
+        String msg = AdBlock.ruleCount() + " rules loaded\n\n"
+                + AdBlock.blockedCount(this) + " blocked today\n\n"
+                + "Status: " + (was ? "ON" : "OFF");
+        new AlertDialog.Builder(this)
+            .setTitle("Adblocker")
+            .setMessage(msg)
+            .setPositiveButton(was ? "Turn OFF" : "Turn ON", (d, w) -> {
+                AdBlock.setEnabled(this, !was);
+                Toast.makeText(this, "Adblocker " + (!was ? "ON" : "OFF"),
+                        Toast.LENGTH_SHORT).show();
+                updateShield();
+            })
+            .setNegativeButton("Close", null)
+            .show();
+    }
+
+    private WebResourceResponse blocked() {
+        // 204 No Content, empty body
+        return new WebResourceResponse(null, null, new java.io.ByteArrayInputStream(new byte[0]));
     }
 
     ImageView iconButton(String name, android.view.View.OnClickListener l) {
@@ -177,6 +238,22 @@ public class MainActivity extends Activity {
             }
         });
         w.setWebViewClient(new WebViewClient() {
+            @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest req) {
+                if (AdBlock.enabled(MainActivity.this) && !req.isForMainFrame()) {
+                    String host = req.getUrl().getHost();
+                    if (host != null && AdBlock.matches(host)) {
+                        AdBlock.addBlocked(MainActivity.this);
+                        android.util.Log.i("adblock", "blocked " + host);
+                        updateShield();
+                        return blocked();
+                    }
+                }
+                return null;
+            }
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) {
+                // user-typed navigation is handled by submitBar/load; let normal link taps load in place
+                return false;
+            }
             @Override public void onPageFinished(WebView v, String u) {
                 android.util.Log.w("WBConsole", "pageFinished " + u);
                 if (v == tab()) { syncUi(); updateNav(); }
