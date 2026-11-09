@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.subbrowser.gecko"
     android:versionCode="3"
-    android:versionName="2.0.0">
+    android:versionName="2.0.3">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
 
@@ -13,7 +13,8 @@
 
     <application
         android:label="SUB-BROWSER"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true">

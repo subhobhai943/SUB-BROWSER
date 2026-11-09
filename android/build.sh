@@ -130,7 +130,7 @@ done
 echo "== zipalign + sign"
 $BT/zipalign -f 4 $B/app.unsigned.apk $B/app.aligned.apk
 $BT/apksigner sign --ks $SDK/debug.jks --ks-pass pass:android --key-pass pass:android \
-  --out $B/SUB-BROWSER-2.0.apk $B/app.aligned.apk
-$BT/apksigner verify $B/SUB-BROWSER-2.0.apk && echo SIGN_OK
-ls -la $B/SUB-BROWSER-2.0.apk
+  --out $B/SUB-BROWSER-2.0.3.apk $B/app.aligned.apk
+$BT/apksigner verify $B/SUB-BROWSER-2.0.3.apk && echo SIGN_OK
+ls -la $B/SUB-BROWSER-2.0.3.apk
 echo "APK_BUILD_OK"

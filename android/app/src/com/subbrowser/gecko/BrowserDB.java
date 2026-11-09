@@ -9,10 +9,31 @@ import android.database.sqlite.SQLiteOpenHelper;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Plain android.database.sqlite store for bookmarks + browsing history. */
+/** Plain android.database.sqlite store for bookmarks + browsing history.
+ *  Fire-and-forget writes run on a single background executor so the UI
+ *  thread never touches disk (ANR source under load). */
 public class BrowserDB extends SQLiteOpenHelper {
 
     private static BrowserDB instance;
+
+    private final java.util.concurrent.ExecutorService writer =
+        java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "subdb");
+            t.setDaemon(true);
+            t.setPriority(Thread.MIN_PRIORITY);
+            return t;
+        });
+
+    /** Async addHistory: never blocks the caller (was an ANR contributor). */
+    public void addHistoryAsync(String url, String title) {
+        final String u = url, t = title;
+        writer.execute(() -> { try { addHistory(u, t); } catch (Throwable ignored) { } });
+    }
+
+    public void updateHistoryTitleAsync(String url, String title) {
+        final String u = url, t = title;
+        writer.execute(() -> { try { updateHistoryTitle(u, t); } catch (Throwable ignored) { } });
+    }
 
     public static synchronized BrowserDB get(Context c) {
         if (instance == null) instance = new BrowserDB(c.getApplicationContext());
@@ -94,10 +115,15 @@ public class BrowserDB extends SQLiteOpenHelper {
         v.put("title", title == null ? url : title);
         v.put("visited_ms", System.currentTimeMillis());
         db.insert("history", null, v);
-        // trim: delete the oldest beyond the cap
-        db.execSQL("DELETE FROM history WHERE id NOT IN "
-                + "(SELECT id FROM history ORDER BY visited_ms DESC LIMIT " + HISTORY_CAP + ")");
+        // trim only every 32 inserts: the subquery is O(n) and was re-running
+        // on every single page load
+        if ((++trimCounter % 32) == 0) {
+            db.execSQL("DELETE FROM history WHERE id NOT IN "
+                    + "(SELECT id FROM history ORDER BY visited_ms DESC LIMIT " + HISTORY_CAP + ")");
+        }
     }
+
+    private int trimCounter = 0;
 
     public void updateHistoryTitle(String url, String title) {
         if (url == null || title == null || title.isEmpty()) return;

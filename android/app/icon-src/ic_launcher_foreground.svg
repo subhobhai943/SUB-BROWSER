@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">
+  <!-- SUB-BROWSER adaptive foreground: bold dragon head + flame-S body.
+       Safe zone circle: center 216,216 r=132. Mark spans ~235px, fills safe zone. -->
+  <g fill="#29ABE2">
+    <!-- thick flame-S body/tail: bold crescent sweep -->
+    <path d="M296 316
+             C 240 348 168 340 128 292
+             C 86 242 96 166 150 128
+             C 196 96 258 100 296 136
+             C 330 168 336 218 310 254
+             C 288 284 248 296 214 282
+             C 186 270 174 240 184 212
+             C 193 188 218 176 242 184
+             C 232 172 212 168 194 176
+             C 168 187 154 216 162 244
+             C 172 277 208 296 242 288
+             C 278 280 302 248 298 211
+             C 293 170 258 140 216 140
+             C 168 140 130 178 128 226
+             C 126 278 166 320 218 324
+             C 246 326 274 318 296 302
+             Z"/>
+    <!-- back spikes along the top of the body -->
+    <path d="M142 152 L118 112 L156 138 L158 96 L188 130 L206 92
+             L222 130 L250 104 L258 140 L286 126 L284 158 Z"/>
+    <!-- dragon head: big wedge facing right, snout to x~370 -->
+    <path d="M286 158
+             C 296 134 320 118 348 120
+             L 386 104 L 368 138
+             C 386 148 396 166 392 186
+             L 348 190 L 366 210
+             C 356 232 330 244 304 236
+             C 286 230 274 214 272 196
+             C 271 182 276 168 286 158 Z"/>
+    <!-- lower jaw -->
+    <path d="M288 224 C 306 238 334 242 356 232 L 340 250
+             C 316 260 292 252 278 236 Z"/>
+    <!-- teeth cut-outs -->
+    <path d="M358 156 l8 14 l8 -14 z" fill="#050505"/>
+    <path d="M338 158 l7 13 l7 -13 z" fill="#050505"/>
+    <!-- eye -->
+    <circle cx="322" cy="162" r="11" fill="#050505"/>
+    <circle cx="325" cy="160" r="5"/>
+    <!-- horn -->
+    <path d="M338 120 C 344 96 362 80 386 76 C 372 92 364 106 360 122 Z"/>
+    <!-- nostril -->
+    <circle cx="376" cy="152" r="4" fill="#050505"/>
+    <!-- tail flame tip -->
+    <path d="M296 316 C 316 330 328 350 328 372
+             C 312 360 300 352 284 348
+             C 296 338 298 328 296 316 Z"/>
+    <!-- ember dots trailing the tail -->
+    <circle cx="352" cy="316" r="8"/>
+    <circle cx="372" cy="344" r="5"/>
+  </g>
+</svg>

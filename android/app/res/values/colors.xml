@@ -6,4 +6,7 @@
     <color name="text">#FFE8F4FA</color>
     <color name="pill_fill">#FF12181f</color>
     <color name="pill_stroke">#FF1e2a35</color>
+    <color name="ic_launcher_background">#FF050505</color>
+    <color name="surface">#FF0E141A</color>
+    <color name="muted">#FF66788A</color>
 </resources>

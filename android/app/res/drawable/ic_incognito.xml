@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- incognito fedora: crown -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,4L3.5,13h17z"/>
+    <!-- brim -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M1.5,13.4h21v2.4h-21z"/>
+    <!-- face dome under brim -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M6.5,17.5h11c0,2.2 -2.46,3.6 -5.5,3.6s-5.5,-1.4 -5.5,-3.6z"/>
+</vector>
