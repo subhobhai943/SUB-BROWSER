@@ -12,6 +12,7 @@
         android:hardwareAccelerated="true">
         <activity
             android:name=".MainActivity"
+            android:theme="@style/AppTheme"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="stateHidden">
