@@ -73,6 +73,16 @@ pub trait EngineBackend: Send + Sync {
     /// Viewport size (px) the engine renders at — used by the chrome to scale
     /// the screenshot stream and map input coordinates.
     fn viewport(&self, tab_id: &str) -> EngineResult<(u32, u32)>;
+    /// Resize the engine rendering viewport to exactly `w`x`h` px so the
+    /// stream never has to be non-uniformly stretched into the window
+    /// (v2.0.1: window resizes propagate to the engine here).
+    fn set_viewport(&self, w: u32, h: u32) -> EngineResult<()>;
+    /// Last viewport set via [`Self::set_viewport`] (None = never resized).
+    /// Backends use this to bring newly created tabs up at the current size.
+    fn requested_viewport(&self) -> Option<(u32, u32)>;
+    /// Enable/disable post-load ad filtering at runtime. Default no-op for
+    /// backends that only filter on demand (embed wires this when available).
+    fn set_adblock_enabled(&self, _on: bool) {}
     /// Make this tab the engine's focused context (raise).
     fn focus(&self, tab_id: &str) -> EngineResult<()>;
     /// Destroy the tab's view.
@@ -87,9 +97,6 @@ pub trait EngineBackend: Send + Sync {
     fn scroll(&self, tab_id: &str, dx: f64, dy: f64) -> EngineResult<()>;
     /// Subscribe to ad-block events (one channel per subscriber).
     fn blocked_event_stream(&self) -> Receiver<BlockedEvent>;
-    /// Enable/disable post-load ad filtering at runtime. Default no-op for
-    /// backends that only filter on demand (embed wires this when available).
-    fn set_adblock_enabled(&self, _on: bool) {}
     /// Human-readable engine id, e.g. "servo-ipc 0.8.0".
     fn describe(&self) -> String;
 }

@@ -13,4 +13,5 @@
 
 pub mod b64;
 pub mod engine;
+pub mod newtab;
 pub mod store;

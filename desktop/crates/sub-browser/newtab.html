@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SUB — New Tab</title>
+<style>
+:root{
+  --accent:#29ABE2;
+  --bg:#050505;
+  --card:#111820;
+  --stroke:rgba(41,171,226,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:#e8f4fa;
+  font-family:-apple-system,'Roboto','Segoe UI',sans-serif}
+body{
+  background:
+    radial-gradient(900px 480px at 50% -10%, rgba(41,171,226,.14), transparent 60%),
+    radial-gradient(700px 500px at 85% 110%, rgba(41,171,226,.07), transparent 60%),
+    linear-gradient(rgba(41,171,226,.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(41,171,226,.032) 1px, transparent 1px),
+    var(--bg);
+  background-size:auto,auto,36px 36px,36px 36px,auto;
+  display:flex;flex-direction:column;align-items:center;
+  padding:min(9vh,80px) 20px 40px;
+}
+.logo{width:120px;height:120px;border-radius:34px;
+  background:linear-gradient(160deg,#0d141b,#070a0e);
+  border:1px solid rgba(41,171,226,.28);
+  box-shadow:0 0 60px rgba(41,171,226,.35);
+  display:flex;align-items:center;justify-content:center}
+.word{
+  margin-top:20px;color:var(--accent);
+  font-size:26px;font-weight:700;letter-spacing:8px;text-indent:8px;
+  text-shadow:0 0 26px rgba(41,171,226,.5);
+}
+.tagline{margin-top:7px;color:#5a7080;font-size:12px;letter-spacing:2px;text-transform:uppercase}
+.search{margin-top:34px;width:min(500px,92%)}
+.search input{
+  width:100%;height:56px;border-radius:28px;
+  background:#111820;border:1px solid var(--stroke);
+  color:#fff;font-size:16px;padding:0 24px;outline:none;
+  box-shadow:0 6px 26px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.grid{
+  margin-top:44px;width:min(520px,94%);
+  display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
+}
+@media (min-width:640px){.grid{width:min(660px,94%);grid-template-columns:repeat(6,1fr)}}
+.tile{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  background:linear-gradient(160deg,#121a23,#0d1218);
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:14px;padding:16px 6px 14px;
+  text-decoration:none;color:#cfe3ee;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);
+}
+.avatar{
+  width:44px;height:44px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;font-weight:700;color:#fff;
+  box-shadow:0 2px 10px rgba(0,0,0,.5);
+}
+.name{font-size:11.5px;letter-spacing:.4px;color:#8ea6b5}
+.foot{margin-top:46px;color:#31404c;font-size:11px;letter-spacing:1px}
+</style>
+</head>
+<body>
+  <div class="logo">
+    <svg width="84" height="84" viewBox="0 0 64 64" fill="none">
+      <!-- stylized SUB dragon -->
+      <path d="M14 46c10 6 24 4 30-4 4-5 4-12 0-17-3-4-8-6-13-5 3-3 3-7 1-10l-4 5c-2-4-6-6-10-6 2 3 2 6 0 8-5 2-8 7-8 12 0 3 1 6 3 8l-4 5 5-1z" fill="#29ABE2"/>
+      <path d="M23 26l8 4-2 6-8-2c-2-3 0-7 2-8z" fill="#0d141b"/>
+      <circle cx="26" cy="29" r="1.7" fill="#eafaff"/>
+      <path d="M36 28c5 0 10 3 13 8-4-1-7 0-9 2-3-3-4-7-4-10z" fill="#1b8fc4"/>
+      <path d="M20 44c6 3 13 3 18 0-4 5-13 6-18 0z" fill="#0e4f6b"/>
+    </svg>
+  </div>
+  <div class="word">SUB-BROWSER</div>
+  <div class="tagline">fast &middot; private &middot; yours</div>
+
+  <form class="search" action="https://www.google.com/search" method="get">
+    <input id="q" name="q" placeholder="Search or type a URL" autofocus spellcheck="false">
+  </form>
+
+  <div class="grid">
+    <a class="tile" href="https://www.google.com"><span class="avatar" style="background:linear-gradient(145deg,#4285F4,#0f67c7)">G</span><span class="name">Google</span></a>
+    <a class="tile" href="https://www.youtube.com"><span class="avatar" style="background:linear-gradient(145deg,#ff4040,#c60000)">&#9654;</span><span class="name">YouTube</span></a>
+    <a class="tile" href="https://github.com"><span class="avatar" style="background:linear-gradient(145deg,#3a424c,#171b20)">&#8962;</span><span class="name">GitHub</span></a>
+    <a class="tile" href="https://www.reddit.com"><span class="avatar" style="background:linear-gradient(145deg,#ff6a3d,#c03c12)">R</span><span class="name">Reddit</span></a>
+    <a class="tile" href="https://www.wikipedia.org"><span class="avatar" style="background:linear-gradient(145deg,#9aa4ad,#4c565e)">W</span><span class="name">Wikipedia</span></a>
+    <a class="tile" href="https://x.com"><span class="avatar" style="background:linear-gradient(145deg,#3b3b3b,#0c0c0c)">X</span><span class="name">X</span></a>
+  </div>
+
+  <div class="foot">&#128737; Built-in ad protection active &middot; SUB-BROWSER</div>
+</body>
+</html>
