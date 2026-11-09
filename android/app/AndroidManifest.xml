@@ -1,32 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.subbrowser.app"
+    package="com.subbrowser.gecko"
     android:versionCode="1"
     android:versionName="1.0">
-    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
-    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
     <application
         android:label="SUB-BROWSER"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_launcher"
+        android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true">
+
         <activity
             android:name=".MainActivity"
-            android:theme="@style/AppTheme"
             android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:windowSoftInputMode="stateHidden">
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation|uiMode|screenLayout|smallestScreenSize|density|fontScale|layoutDirection|locale"
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="http"/>
-                <data android:scheme="https"/>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
             </intent-filter>
         </activity>
+
+        <!-- GeckoView child-process services (AAR manifest not merged by aapt2; copied verbatim) -->
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$tab0" android:exported="false" android:process=":sandboxed_tab_disable_art_image_0" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$tab1" android:exported="false" android:process=":sandboxed_tab_disable_art_image_1" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$tab2" android:exported="false" android:process=":sandboxed_tab_disable_art_image_2" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$tab3" android:exported="false" android:process=":sandboxed_tab_disable_art_image_3" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$tab4" android:exported="false" android:process=":sandboxed_tab_disable_art_image_4" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0" android:exported="false" android:isolatedProcess="true" android:process=":isolatedTab_disable_art_image_0" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab1" android:exported="false" android:isolatedProcess="true" android:process=":isolatedTab_disable_art_image_1" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab2" android:exported="false" android:isolatedProcess="true" android:process=":isolatedTab_disable_art_image_2" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab3" android:exported="false" android:isolatedProcess="true" android:process=":isolatedTab_disable_art_image_3" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab4" android:exported="false" android:isolatedProcess="true" android:process=":isolatedTab_disable_art_image_4" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$zygoteTab" android:exported="false" android:isolatedProcess="true" android:useAppZygote="true" android:process=":zygoteTab_disable_art_image_" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$gpu" android:exported="false" android:process=":gpu_disable_art_image_" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$rdd" android:exported="false" android:process=":rdd_disable_art_image_" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$utility" android:exported="false" android:process=":utility_disable_art_image_" />
+        <service android:name="org.mozilla.gecko.process.GeckoChildProcessServices$socket" android:exported="false" android:process=":socket_disable_art_image_" />
+        <service android:name="org.mozilla.gecko.media.MediaManager" android:exported="false" android:process=":media" />
+        <provider android:name="org.mozilla.gecko.GeckoClipboardContentProvider"
+            android:authorities="com.subbrowser.gecko.clipboard"
+            android:exported="false" android:grantUriPermissions="true" />
     </application>
 </manifest>

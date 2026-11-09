@@ -8,9 +8,13 @@ on:
 permissions:
   contents: write
 
+# SUB-BROWSER release pipeline.
+# Product editions (Gecko engine everywhere):
+#   * Desktop  — native Rust browser (multi-OS installers)
+#   * Android  — GeckoView, engine bundled in the APK, production-signed
 jobs:
-  android-lite:
-    name: Android (lite edition)
+  build-android:
+    name: Android (engine-bundled)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,98 +28,73 @@ jobs:
           keytool -genkeypair -keystore $ANDROID_HOME/debug.jks -alias androiddebugkey \
             -storepass android -keypass android -dname "CN=SUB-BROWSER Debug" \
             -keyalg RSA -keysize 2048 -validity 10000
-          sed -i "s|SDK=/opt/android-sdk|SDK=$ANDROID_HOME|; s|A=/opt/android-build/app|A=$GITHUB_WORKSPACE/android/app|; s|B=/opt/android-build/build|B=$GITHUB_WORKSPACE/android/build|" android/build.sh
+          sed -i "s|SDK=/opt/android-sdk|SDK=$ANDROID_HOME|; s|G=/opt/gecko-build|G=$GITHUB_WORKSPACE/android|" android/build.sh
           bash android/build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: sub-browser-android-lite
+          name: sub-browser-android
           path: android/build/SUB-BROWSER-*.apk
 
-  android-full:
-    name: Android (full engine edition)
+  build-deb:
+    name: Desktop (.deb)
     runs-on: ubuntu-latest
+    # Packaging script not wired yet (scripts/package-deb.sh) — placeholder.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: "17" }
-      - run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          yes | sdkmanager "build-tools;34.0.0" "platforms;android-34" >/dev/null
-          keytool -genkeypair -keystore $ANDROID_HOME/debug.jks -alias androiddebugkey \
-            -storepass android -keypass android -dname "CN=SUB-BROWSER Debug" \
-            -keyalg RSA -keysize 2048 -validity 10000
-          sed -i "s|SDK=/opt/android-sdk|SDK=$ANDROID_HOME|; s|G=/opt/gecko-build|G=$GITHUB_WORKSPACE/android-gecko|" android-gecko/build.sh
-          bash android-gecko/build.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sub-browser-android
-          path: android-gecko/build/SUB-BROWSER-*.apk
+      - run: test -f scripts/package-deb.sh && bash scripts/package-deb.sh || { echo "packaging script not yet wired"; exit 1; }
 
-  desktop-linux:
-    name: Desktop (Linux AppImage)
+  build-rpm:
+    name: Desktop (.rpm)
     runs-on: ubuntu-latest
+    # Packaging script not wired yet (scripts/package-rpm.sh) — placeholder.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - working-directory: desktop
-        run: |
-          npm ci --no-shell-fails
-          export ELECTRON_GET_USE_PROXY=0
-          npx electron-builder --linux AppImage --x64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sub-browser-linux
-          path: desktop/dist/*.AppImage
+      - run: test -f scripts/package-rpm.sh && bash scripts/package-rpm.sh || { echo "packaging script not yet wired"; exit 1; }
 
-  desktop-windows:
-    name: Desktop (Windows)
+  build-arch:
+    name: Desktop (Arch / .pkg.tar.zst)
+    runs-on: ubuntu-latest
+    # Packaging script not wired yet (scripts/package-arch.sh) — placeholder.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -f scripts/package-arch.sh && bash scripts/package-arch.sh || { echo "packaging script not yet wired"; exit 1; }
+
+  build-windows:
+    name: Desktop (Windows .msi/.exe)
     runs-on: windows-latest
+    # Packaging script not wired yet (scripts/package-windows.ps1) — placeholder.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - working-directory: desktop
-        run: |
-          npm ci
-          npx electron-builder --win dir --x64
-          Compress-Archive -Path dist/win-unpacked/* -DestinationPath SUB-BROWSER-windows-x64.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sub-browser-windows
-          path: desktop/SUB-BROWSER-windows-x64.zip
+      - shell: bash
+        run: test -f scripts/package-windows.ps1 && bash -c 'echo "wire me"; exit 1' || { echo "packaging script not yet wired"; exit 1; }
 
-  desktop-macos:
-    name: Desktop (macOS)
+  build-macos:
+    name: Desktop (macOS .dmg/.pkg)
     runs-on: macos-latest
+    # Packaging script not wired yet (scripts/package-macos.sh) — placeholder.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - working-directory: desktop
-        run: |
-          npm ci
-          CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dmg zip --arm64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sub-browser-macos
-          path: desktop/dist/*.dmg
+      - run: test -f scripts/package-macos.sh && bash scripts/package-macos.sh || { echo "packaging script not yet wired"; exit 1; }
 
   release:
     name: Publish release
-    needs: [android-lite, android-full, desktop-linux, desktop-windows, desktop-macos]
+    needs: [build-android, build-deb, build-rpm, build-arch, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: assets }
+        with:
+          path: assets
       - name: Flatten assets
         run: |
           mkdir -p flat
-          cp assets/sub-browser-android-lite/*.apk flat/SUB-BROWSER-1.0-lite.apk 2>/dev/null || true
-          cp assets/sub-browser-android/*.apk flat/SUB-BROWSER-1.0-full.apk 2>/dev/null || true
-          find assets -type f \( -name "*.AppImage" -o -name "*.zip" -o -name "*.dmg" \) -exec cp {} flat/ \;
+          find assets -type f \( -name "*.apk" -o -name "*.deb" -o -name "*.rpm" \
+            -o -name "*.pkg.tar.zst" -o -name "*.msi" -o -name "*.exe" \
+            -o -name "*.dmg" -o -name "*.pkg" -o -name "*.zip" \) -exec cp {} flat/ \;
           cd flat && sha256sum * > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
