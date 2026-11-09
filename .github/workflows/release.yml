@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  android-lite:
+    name: Android (lite edition)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: android-actions/setup-android@v3
+      - run: |
+          sdkmanager "build-tools;34.0.0" "platforms;android-34" >/dev/null
+          keytool -genkeypair -keystore $RUNNER_TEMP/debug.jks -alias androiddebugkey \
+            -storepass android -keypass android -dname "CN=SUB-BROWSER Debug" \
+            -keyalg RSA -keysize 2048 -validity 10000
+          sed -i "s|SDK=/opt/android-sdk|SDK=$ANDROID_HOME|; s|SDK/debug.jks|$RUNNER_TEMP/debug.jks|; s|A=/opt/android-build/app|A=$GITHUB_WORKSPACE/android/app|; s|B=/opt/android-build/build|B=$GITHUB_WORKSPACE/android/build|" android/build.sh
+          bash android/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sub-browser-android-lite
+          path: android/build/SUB-BROWSER-*.apk
+
+  android-full:
+    name: Android (full engine edition)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: android-actions/setup-android@v3
+      - run: |
+          sdkmanager "build-tools;34.0.0" "platforms;android-34" >/dev/null
+          keytool -genkeypair -keystore $RUNNER_TEMP/debug.jks -alias androiddebugkey \
+            -storepass android -keypass android -dname "CN=SUB-BROWSER Debug" \
+            -keyalg RSA -keysize 2048 -validity 10000
+          sed -i "s|SDK=/opt/android-sdk|SDK=$ANDROID_HOME|; s|SDK/debug.jks|$RUNNER_TEMP/debug.jks|; s|G=/opt/gecko-build|G=$GITHUB_WORKSPACE/android-gecko|" android-gecko/build.sh
+          bash android-gecko/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sub-browser-android
+          path: android-gecko/build/SUB-BROWSER-*.apk
+
+  desktop-linux:
+    name: Desktop (Linux AppImage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - working-directory: desktop
+        run: |
+          npm ci --no-shell-fails
+          export ELECTRON_GET_USE_PROXY=0
+          npx electron-builder --linux AppImage --x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sub-browser-linux
+          path: desktop/dist/*.AppImage
+
+  desktop-windows:
+    name: Desktop (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - working-directory: desktop
+        run: |
+          npm ci
+          npx electron-builder --win dir --x64
+          Compress-Archive -Path dist/win-unpacked/* -DestinationPath SUB-BROWSER-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sub-browser-windows
+          path: desktop/SUB-BROWSER-windows-x64.zip
+
+  desktop-macos:
+    name: Desktop (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - working-directory: desktop
+        run: |
+          npm ci
+          CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dmg zip --arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sub-browser-macos
+          path: desktop/dist/*.dmg
+
+  release:
+    name: Publish release
+    needs: [android-lite, android-full, desktop-linux, desktop-windows, desktop-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: assets }
+      - name: Flatten assets
+        run: |
+          mkdir -p flat && find assets -type f \( -name "*.apk" -o -name "*.AppImage" -o -name "*.zip" -o -name "*.dmg" \) -exec cp {} flat/ \;
+          cd flat && sha256sum * > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: flat/*
+          generate_release_notes: true
