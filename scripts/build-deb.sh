@@ -127,6 +127,6 @@ else
 fi
 
 echo "== built: $OUT"
-command -v dpkg-deb >/dev/null && dpkg-deb --info "$OUT" | head -20 || true
-command -v dpkg-deb >/dev/null && dpkg-deb --contents "$OUT" | head -20 || true
+command -v dpkg-deb >/dev/null && dpkg-deb --info "$OUT" | head -20 || true || true
+command -v dpkg-deb >/dev/null && dpkg-deb --contents "$OUT" | head -20 || true || true
 sha256sum "$OUT"

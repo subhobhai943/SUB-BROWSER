@@ -71,11 +71,12 @@ EOF
 
 mkdir -p "$DIST_DIR"
 OUT="$DIST_DIR/sub-browser-$VERSION-$ARCH.txz"
+OUT_ABS="$(realpath -m "$OUT")"
 # pkg expects +MANIFEST at archive root alongside files
-( cd "$FLAT" && tar -cJf "$OUT" +MANIFEST bin share )
+( cd "$FLAT" && tar -cJf "$OUT_ABS" +MANIFEST bin share )
 
 echo "== built: $OUT"
-echo "-- members --"; tar -tJf "$OUT" | head -15
-echo "-- manifest --"; tar -xJf "$OUT" +MANIFEST -O 2>/dev/null || tar -xJf "$OUT" ./+MANIFEST -O
+echo "-- members --"; tar -tJf "$OUT" | head -15 || true
+echo "-- manifest --"; tar -xJf "$OUT" +MANIFEST -O 2>/dev/null || tar -xJf "$OUT" ./+MANIFEST -O || true
 echo "Install on FreeBSD:  sudo pkg add ./sub-browser-$VERSION-$ARCH.txz"
 sha256sum "$OUT"

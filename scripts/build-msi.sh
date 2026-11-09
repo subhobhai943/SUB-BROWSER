@@ -66,7 +66,7 @@ cat > "$WXS" <<EOF
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER"/>
     <Icon Id="subbrowser.ico" SourceFile="\$(var.SourceDir)\\subbrowser.ico"/>
     <Property Id="ARPPRODUCTICON" Value="subbrowser.ico"/>
-    <WixVariable Id="WixUILicenseRtf" Value="\$(var.SourceDir)\\LICENSE.rtf"/>
+    <!-- license: WiX default -->
   </Product>
 
   <Fragment>

@@ -116,13 +116,13 @@ fi
 echo "== built: $OUT"
 echo "-- package contents (first 15) --"
 case "$OUT" in
-  *.zst) tar -tf "$OUT" 2>/dev/null | head -15 ;;
-  *.xz)  tar -tJf "$OUT" | head -15 ;;
-  *)     tar -tf "$OUT" | head -15 ;;
+  *.zst) tar -tf "$OUT" 2>/dev/null | head -15 || true ;;
+  *.xz)  tar -tJf "$OUT" | head -15 || true ;;
+  *)     tar -tf "$OUT" | head -15 || true ;;
 esac
 echo "-- .PKGINFO --"
 case "$OUT" in
   *.zst) tar -xOf "$OUT" .PKGINFO 2>/dev/null || tar -xOf "$OUT" ./PKGINFO ;;
   *) tar -xJf "$OUT" .PKGINFO 2>/dev/null || tar -xJf "$OUT" ./PKGINFO ;;
-esac | head -20
+esac | head -20 || true
 sha256sum "$OUT"

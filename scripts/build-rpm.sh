@@ -123,6 +123,6 @@ EOF
 fi
 
 echo "== built: $OUT"
-command -v rpm >/dev/null && rpm -qpi "$OUT" 2>/dev/null | head -15
-command -v rpm >/dev/null && rpm -qlp "$OUT" 2>/dev/null | head -15
+command -v rpm >/dev/null && rpm -qpi "$OUT" 2>/dev/null | head -15 || true
+command -v rpm >/dev/null && rpm -qlp "$OUT" 2>/dev/null | head -15 || true
 sha256sum "$OUT"

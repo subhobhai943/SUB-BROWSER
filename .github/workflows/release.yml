@@ -235,7 +235,7 @@ jobs:
         run: |
           set -euo pipefail
           choco install wixtoolset -y
-          export PATH="/c/Program Files (x86)/WiX Toolset v3.11/bin:${PATH:-}"
+          export PATH="/c/Program Files (x86)/WiX Toolset v3.14/bin:${PATH:-}"
           if command -v candle >/dev/null 2>&1; then WIX=1; else WIX=0; fi
           if [ "$WIX" = 1 ]; then
             bash scripts/build-msi.sh staging
