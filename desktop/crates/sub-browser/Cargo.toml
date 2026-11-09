@@ -1,6 +1,6 @@
 [package]
 name = "sub-browser"
-version = "2.0.1"
+version = "2.0.2"
 edition = "2021"
 description = "SUB-BROWSER desktop shell v2 — Tauri2 chrome + Servo engine over WebDriver IPC"
 

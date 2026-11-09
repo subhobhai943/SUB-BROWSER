@@ -66,7 +66,11 @@ emit_dir() {
     # backslashes unambiguously)
     winpath="${relpath//\//\\}"
     id="$(san_id "$relpath")"
-    echo "    <Component Id=\"Comp_$id\" Guid=\"generateGuid\"><File Id=\"File_$id\" Source=\"\$(var.SourceDir)\\\\$winpath\" KeyPath=\"yes\"/></Component>"
+    # WiX v3 requires Guid="*" (auto-generate at build) or a literal GUID.
+    # v2.0.1 regression: the old "generateGuid" placeholder was NOT a
+    # placeholder candle understands — CNDL0009 fired for every component
+    # and the MSI never built. Release 42660598702 lesson.
+    echo "    <Component Id=\"Comp_$id\" Guid=\"*\"><File Id=\"File_$id\" Source=\"\$(var.SourceDir)\\\\$winpath\" KeyPath=\"yes\"/></Component>"
     FILE_COUNT=$((FILE_COUNT+1))
   done < <(find "$path" -maxdepth 1 -type f | LC_ALL=C sort)
   # subdirectories (skip ones with no files: empty <Directory> ICE40's)
