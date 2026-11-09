@@ -84,6 +84,8 @@ DESK
 %files
 %defattr(-,root,root,-)
 /usr/bin/sub-browser
+/usr/bin/servoshell
+/usr/bin/sub-browser-smoke
 /usr/share/sub-browser
 /usr/share/applications/sub-browser.desktop
 /usr/share/icons
