@@ -103,6 +103,31 @@
     box-shadow: 0 0 0 3px rgba(41,171,226,.16), 0 0 18px rgba(41,171,226,.12);
   }
 
+  /* ---------- engine view region ---------- */
+  #view {
+    flex: 1; position: relative; overflow: hidden;
+    background: #050505;
+    border-top: 1px solid rgba(41,171,226,.12);
+  }
+  #frame {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: fill; image-rendering: auto;
+    -webkit-user-drag: none;
+  }
+  #status {
+    position: absolute; left: 0; right: 0; bottom: 0; top: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #4d626f; font-size: 13px; pointer-events: none;
+    flex-direction: column; gap: 8px;
+  }
+  #status .spin {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid #1c2b35; border-top-color: var(--accent);
+    animation: sp 1s linear infinite;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  #err { display: none; color: #e07a6a; max-width: 70%; text-align: center; user-select: text; }
+
   ::-webkit-scrollbar { height: 5px; }
   ::-webkit-scrollbar-thumb { background: rgba(41,171,226,.5); border-radius: 3px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -127,6 +152,9 @@
       <svg class="gico" viewBox="0 0 24 24"><path d="M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z"/></svg>
       <input id="urlbar" spellcheck="false" placeholder="Search or enter address">
     </div>
+    <button class="iconbtn" id="star" title="Bookmark this page">
+      <svg viewBox="0 0 24 24"><path d="M12,17.27L18.18,21l-1.64,-7.03L22,9.24l-7.19,-0.61L12,2 9.19,8.63 2,9.24l5.46,4.73L5.82,21z"/></svg>
+    </button>
     <button class="iconbtn" id="shield" title="Ad protection">
       <svg viewBox="0 0 24 24"><path d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5z"/></svg>
       <span id="badge"></span>
@@ -134,6 +162,10 @@
     <button class="iconbtn" id="closetab" title="Close tab">
       <svg viewBox="0 0 24 24"><path d="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"/></svg>
     </button>
+  </div>
+  <div id="view" tabindex="-1">
+    <img id="frame" alt="" draggable="false" style="display:none">
+    <div id="status"><div class="spin"></div><div id="statusmsg">Starting Servo engine…</div><div id="err"></div></div>
   </div>
 <script>
 (function () {
@@ -144,6 +176,8 @@
   var userTyped = false;
   var adEnabled = true;
   var adCount = 0;
+  var vw = 1024, vh = 740;   // engine viewport, for input scaling
+  var engineOk = false;
 
   function cmd(c, a) {
     if (!I) return;
@@ -215,7 +249,7 @@
     if (!tabs[label]) { tabs[label] = { url: '', title: '', active: false }; order.push(label); }
     var t = tabs[label];
     if (p.event === 'url') { t.url = p.url; }
-    else if (p.event === 'title') { t.title = p.title; }
+    else if (p.event === 'title') { t.title = p.title; if (p.url) t.url = p.url; }
     else { if (p.url) t.url = p.url; if (p.title) t.title = p.title; }
     if (p.active) {
       activeLabel = label;
@@ -224,6 +258,20 @@
       bar.value = pretty(t.url);
     }
     render();
+  }
+
+  function setFrame(p) {
+    if (p.tab !== activeLabel) return;
+    vw = p.vw || vw; vh = p.vh || vh;
+    var img = document.getElementById('frame');
+    // Decode-then-swap avoids flicker on the streaming <img>.
+    var pre = new Image();
+    pre.onload = function () {
+      img.src = pre.src;
+      img.style.display = 'block';
+      if (!engineOk) { engineOk = true; document.getElementById('status').style.display = 'none'; }
+    };
+    pre.src = 'data:image/png;base64,' + p.img;
   }
 
   function boot() {
@@ -243,6 +291,26 @@
         renderBadge();
       })
     }).catch(function () {});
+    I.invoke('plugin:event|listen', {
+      event: 'frame',
+      target: { kind: 'Any' },
+      handler: I.transformCallback(function (e) { setFrame(e.payload); })
+    }).catch(function () {});
+    I.invoke('plugin:event|listen', {
+      event: 'engine-info',
+      target: { kind: 'Any' },
+      handler: I.transformCallback(function (e) {
+        var d = e.payload || {};
+        if (d.ok) {
+          document.getElementById('statusmsg').textContent =
+            'Servo engine: ' + (d.backend || 'ready');
+        } else {
+          var el = document.getElementById('err');
+          el.style.display = 'block';
+          el.textContent = 'Engine error: ' + (d.error || 'unknown');
+        }
+      })
+    }).catch(function () {});
     cmd('ready');
     render();
     renderBadge();
@@ -253,6 +321,7 @@
   document.getElementById('fwd').addEventListener('click', function () { cmd('forward'); });
   document.getElementById('reload').addEventListener('click', function () { cmd('reload'); });
   document.getElementById('home').addEventListener('click', function () { cmd('home'); });
+  document.getElementById('star').addEventListener('click', function () { cmd('bookmark'); });
   document.getElementById('closetab').addEventListener('click', function () {
     if (activeLabel) cmd('close-tab', activeLabel);
   });
@@ -280,7 +349,39 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 't') { e.preventDefault(); cmd('new-tab'); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') { e.preventDefault(); if (activeLabel) cmd('close-tab', activeLabel); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') { e.preventDefault(); cmd('reload'); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); cmd('bookmark'); }
   });
+
+  /* ---- engine view input forwarding -------------------------------
+     Clicks/keys/wheel in #view are scaled to engine viewport coords
+     and forwarded as W3C pointer/key actions (or scrollBy for wheel). */
+  var view = document.getElementById('view');
+  function scalePt(e) {
+    var r = view.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width * vw, (e.clientY - r.top) / r.height * vh];
+  }
+  view.addEventListener('mousedown', function (e) {
+    if (!engineOk) return;
+    var p = scalePt(e);
+    cmd('click', p[0].toFixed(0) + ',' + p[1].toFixed(0));
+    e.preventDefault();
+  });
+  view.addEventListener('wheel', function (e) {
+    if (!engineOk) return;
+    cmd('scroll', (e.deltaX || 0).toFixed(0) + ',' + (e.deltaY || 0).toFixed(0));
+    e.preventDefault();
+  }, { passive: false });
+  view.addEventListener('keydown', function (e) {
+    if (!engineOk) return;
+    if (e.key === 'Tab' || (e.ctrlKey || e.metaKey)) return; // chrome keeps these
+    if (e.key.length === 1 || ['Enter','Backspace','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(e.key) !== -1) {
+      cmd('key', e.key);
+      e.preventDefault();
+    }
+  });
+  // Make the view focusable so it receives keys after a click.
+  view.addEventListener('mouseup', function () { view.focus(); });
+  view.addEventListener('click', function () { view.focus(); });
 })();
 </script>
 </body>

@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["crates/sub-browser"]
+default-members = ["crates/sub-browser"]
+
+[profile.release]
+strip = true
+codegen-units = 1
