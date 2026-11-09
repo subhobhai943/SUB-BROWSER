@@ -107,6 +107,12 @@ public class MainActivity extends Activity {
                             "yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()));
                     pw.println("thread: " + t.getName());
                     pw.println("version: 2.0.3 (3)");
+                    pw.println("device: " + android.os.Build.MANUFACTURER + " "
+                            + android.os.Build.MODEL + " android "
+                            + android.os.Build.VERSION.RELEASE
+                            + " (sdk " + android.os.Build.VERSION.SDK_INT + ")");
+                    pw.println("abi: " + java.util.Arrays.toString(
+                            android.os.Build.SUPPORTED_ABIS));
                     e.printStackTrace(pw);
                     pw.flush();
                 }
@@ -117,6 +123,53 @@ public class MainActivity extends Activity {
                 if (defaultHandler != null) defaultHandler.uncaughtException(t, e);
             }
         });
+    }
+
+    /** Create/restore the GeckoRuntime. Safe to call from onCreate AND onResume;
+     *  returns true when the engine is usable. OriginOS-style killers can reap
+     *  the engine without taking the whole app down, so this is idempotent. */
+    private boolean ensureRuntime() {
+        if (runtimeReady && runtime != null) return true;
+        try {
+            runtime = GeckoRuntime.create(getApplication(),
+                new GeckoRuntimeSettings.Builder()
+                    .contentBlocking(new ContentBlocking.Settings.Builder()
+                        .enhancedTrackingProtectionLevel(
+                            ContentBlocking.EtpLevel.STRICT)
+                        .enhancedTrackingProtectionCategory(
+                            ContentBlocking.EtpCategory.STRICT)
+                        .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS)
+                        .cookieBehaviorPrivateMode(ContentBlocking.CookieBehavior.ACCEPT_NONE)
+                        .strictSocialTrackingProtection(true)
+                        .cookiePurging(true)
+                        .build())
+                    .build());
+            runtimeReady = (runtime != null);
+        } catch (Throwable t) {
+            android.util.Log.e("SUBBM", "GeckoRuntime.create failed", t);
+            runtime = null;
+            runtimeReady = false;
+        }
+        if (runtime != null) {
+            try {
+                runtime.getSettings().setFontSizeFactor(BrowserState.zoom(this) / 100f);
+            } catch (Throwable ignored) { }
+        }
+        return runtimeReady && runtime != null;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // vivo/OriginOS background-kill path: if the engine died (or never
+        // came up) while the Activity survived, rebuild it now; then make
+        // sure at least one live tab exists so the user never sees a dead UI.
+        if (!runtimeReady || runtime == null) {
+            if (ensureRuntime() && tabs.isEmpty()) {
+                runtimeFailedShown = false;
+                try { newTab(); } catch (Throwable ignored) { }
+            }
+        }
     }
 
     @Override
@@ -133,28 +186,9 @@ public class MainActivity extends Activity {
         // ---- GeckoView runtime bring-up, hardened ----
         // Classic footgun: GeckoRuntime.create() can throw on low-memory /
         // second-process-start paths; never continue with a half-dead runtime.
-        if (!runtimeReady || runtime == null) {
-            try {
-                runtime = GeckoRuntime.create(getApplication(),
-                    new GeckoRuntimeSettings.Builder()
-                        .contentBlocking(new ContentBlocking.Settings.Builder()
-                            .enhancedTrackingProtectionLevel(
-                                ContentBlocking.EtpLevel.STRICT)
-                            .enhancedTrackingProtectionCategory(
-                                ContentBlocking.EtpCategory.STRICT)
-                            .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS)
-                            .cookieBehaviorPrivateMode(ContentBlocking.CookieBehavior.ACCEPT_NONE)
-                            .strictSocialTrackingProtection(true)
-                            .cookiePurging(true)
-                            .build())
-                        .build());
-                runtimeReady = (runtime != null);
-            } catch (Throwable t) {
-                android.util.Log.e("SUBBM", "GeckoRuntime.create failed", t);
-                runtime = null;
-                runtimeReady = false;
-            }
-        }
+        // Also covers aggressive OEM kill policies (vivo OriginOS etc.) where
+        // engine child processes are reaped while the app process lives.
+        ensureRuntime();
         if (runtime == null) {
             // Build the full UI anyway so the app never dies on cold start;
             // showSnack informs and a retry happens on next launch.
@@ -194,6 +228,33 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
+
+        // Android 15/16 enforce edge-to-edge for newer targets and OEM builds
+        // (vivo OriginOS) behave inconsistently even for targetSdk 34: apply
+        // system-bar insets as padding on the root instead of relying on
+        // deprecated systemUiVisibility / statusBarColor behaviour.
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                getWindow().setStatusBarColor(android.graphics.Color.TRANSPARENT);
+                getWindow().setNavigationBarColor(android.graphics.Color.TRANSPARENT);
+            }
+            root.setOnApplyWindowInsetsListener((v, insets) -> {
+                android.graphics.Insets bars;
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    bars = insets.getInsets(android.view.WindowInsets.Type.systemBars());
+                } else {
+                    final android.graphics.Rect r = new android.graphics.Rect();
+                    r.left = insets.getSystemWindowInsetLeft();
+                    r.top = insets.getSystemWindowInsetTop();
+                    r.right = insets.getSystemWindowInsetRight();
+                    r.bottom = insets.getSystemWindowInsetBottom();
+                    v.setPadding(r.left, r.top, r.right, r.bottom);
+                    return insets;
+                }
+                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return insets;
+            });
+        } catch (Throwable ignored) { }
 
         // ---- row 1: tab chip strip (48dp) ----
         HorizontalScrollView sv = new HorizontalScrollView(this);
