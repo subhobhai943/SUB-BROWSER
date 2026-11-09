@@ -227,24 +227,43 @@ jobs:
           EXE=$(find engine-win -type f -name '*.exe' | head -1)
           cp "$EXE" staging/servoshell.exe          # resolve_binary finds servoshell beside the app exe
           RES=$(find engine-win -type d -name resources | head -1)
-          [ -n "$RES" ] && cp -a "$RES" staging/resources
+          if [ -n "$RES" ]; then cp -a "$RES" staging/resources; fi
+          # WiX <Icon> source: must be named subbrowser.ico inside staging
+          cp desktop/crates/sub-browser/icons/icon.ico staging/subbrowser.ico
           mkdir -p dist
+          ls -la staging
 
       - name: Install WiX + build MSI
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail   # NOT -e: MSI failure falls back to bare exe, job must exit 0
           choco install wixtoolset -y
           export PATH="/c/Program Files (x86)/WiX Toolset v3.14/bin:${PATH:-}"
-          if command -v candle >/dev/null 2>&1; then WIX=1; else WIX=0; fi
-          if [ "$WIX" = 1 ]; then
-            bash scripts/build-msi.sh staging
-            candle -arch x64 -dSourceDir=staging -dVersion="$VER" dist/sub-browser.wxs
-            light -ext WixUIExtension -ext WixUtilExtension -o "dist/sub-browser-$VER-x64.msi" sub-browser.wixobj
+          # absolute SourceDir: light resolves relative paths against cwd which
+          # has bitten us (LGHT0103 on staging\sub-browser.exe)
+          SRC="$(pwd)/staging"
+          # re-stage the exe defensively in case staging got clobbered
+          [ -f staging/sub-browser.exe ] || cp desktop/target/release/sub-browser.exe staging/
+          [ -f staging/subbrowser.ico ] || cp desktop/crates/sub-browser/icons/icon.ico staging/subbrowser.ico
+          ls -la staging
+          MSI_OK=0
+          if command -v candle >/dev/null 2>&1; then
+            VERSION="$VER" DIST_DIR=dist bash scripts/build-msi.sh "$SRC"
+            if candle -arch x64 -dSourceDir="$SRC" -dVersion="$VER" dist/sub-browser.wxs \
+              && light -ext WixUIExtension -ext WixUtilExtension -o "dist/sub-browser-$VER-x64.msi" sub-browser.wixobj; then
+              MSI_OK=1
+            fi
           else
-            echo "::warning::WiX not on PATH — shipping exe only"
+            echo "::warning::WiX not on PATH after choco install"
+          fi
+          if [ "$MSI_OK" = 1 ]; then
+            ls -la dist/*.msi
+          else
+            echo "::warning::MSI build failed — shipping bare .exe instead"
             cp staging/sub-browser.exe "dist/sub-browser-$VER-x64.exe"
           fi
+          ls -la dist
+          exit 0
 
       - uses: actions/upload-artifact@v4
         if: always()
