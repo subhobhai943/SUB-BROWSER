@@ -112,7 +112,10 @@ jobs:
         with: { path: assets }
       - name: Flatten assets
         run: |
-          mkdir -p flat && find assets -type f \( -name "*.apk" -o -name "*.AppImage" -o -name "*.zip" -o -name "*.dmg" \) -exec cp {} flat/ \;
+          mkdir -p flat
+          cp assets/sub-browser-android-lite/*.apk flat/SUB-BROWSER-1.0-lite.apk 2>/dev/null || true
+          cp assets/sub-browser-android/*.apk flat/SUB-BROWSER-1.0-full.apk 2>/dev/null || true
+          find assets -type f \( -name "*.AppImage" -o -name "*.zip" -o -name "*.dmg" \) -exec cp {} flat/ \;
           cd flat && sha256sum * > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
