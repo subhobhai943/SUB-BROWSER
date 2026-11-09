@@ -1,7 +1,7 @@
 {
   "name": "sub-browser",
   "version": "1.0.0",
-  "description": "SUB-BROWSER — a dark-themed desktop browser built on Electron/Chromium with a dragon-blue accent.",
+  "description": "SUB-BROWSER \u2014 a dark-themed desktop browser built on Electron/Chromium with a dragon-blue accent.",
   "main": "main.js",
   "type": "commonjs",
   "author": "",
@@ -31,6 +31,10 @@
         "AppImage"
       ],
       "category": "Network"
+    },
+    "icon": "assets/icon.png",
+    "mac": {
+      "category": "public.app-category.productivity"
     }
   },
   "allowScripts": {
