@@ -1,6 +1,6 @@
 [package]
 name = "sub-browser"
-version = "0.2.0"
+version = "2.0.0"
 edition = "2021"
 description = "SUB-BROWSER desktop shell v2 — Tauri2 chrome + Servo engine over WebDriver IPC"
 
@@ -14,16 +14,27 @@ serde_json = "1"
 rusqlite = { version = "0.38", features = ["bundled"] }
 dirs = "6"
 
+# embed-only deps (same feature sets as the spike build so the servo/mozjs
+# compile cache in the shared target dir is reused verbatim).
+dpi = { version = "0.1", optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["logging", "std", "tls12", "aws-lc-rs"], optional = true }
+servo = { version = "0.8.0", default-features = false, features = ["bundled", "js_jit", "clipboard"], optional = true }
+url = { version = "2.5", optional = true }
+
 [features]
 default = []
 # `embed`: in-process `servo` crate backend (Option 1). See docs/ENGINE.md.
-# Enabled only once the servo crate compile is green on CI (60-150 min cold
-# build for mozjs/SpiderMonkey C++ — see /opt/gecko-desktop/VERDICT.md).
-embed = []
+# PROVEN rendering on the GPU-less box (SoftwareRenderingContext/SWGL) —
+# see docs/ENGINE.md "embed status" for the headless embed-smoke results.
+# The Tauri app keeps the IPC backend until chrome integration lands.
+embed = ["dep:dpi", "dep:image", "dep:rustls", "dep:servo", "dep:url"]
 
-[profile.release]
-strip = true
-codegen-units = 1
 [[bin]]
 name = "sub-browser-smoke"
 path = "src/bin/sub_browser_smoke.rs"
+
+[[bin]]
+name = "embed-smoke"
+path = "src/bin/embed_smoke.rs"
+required-features = ["embed"]

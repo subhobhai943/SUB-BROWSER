@@ -3,6 +3,15 @@ resolver = "2"
 members = ["crates/sub-browser"]
 default-members = ["crates/sub-browser"]
 
+# NOTE: `codegen-units = 1` deliberately removed — the embed build reuses
+# /opt/gecko-desktop/spike-embed/target as CARGO_TARGET_DIR, and dep
+# fingerprints only match when the release profile equals the spike's
+# (stock) one. Re-add for chrome-only release builds if desired.
 [profile.release]
 strip = true
-codegen-units = 1
+
+# Mirrors the spike's [profile.dev] so debug fallback builds also reuse the
+# cached servo/mozjs artifacts.
+[profile.dev]
+debug = false
+opt-level = 1

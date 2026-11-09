@@ -37,7 +37,7 @@ const ADBLOCK_LIST: &str = include_str!("../../adblock_domains.txt");
 /// then collapses visible fixed/absolute ad-ish containers by class/id
 /// heuristics, and returns a JSON array of ["host","kind"] removals.
 /// `__SUBLIST__` is replaced with the JSON-embedded domain array.
-const ADBLOCK_SCRIPT: &str = r#"
+pub(crate) const ADBLOCK_SCRIPT: &str = r#"
 var list = __SUBLIST__;
 var set = {}; for (var i=0;i<list.length;i++) set[list[i]]=1;
 function hostOf(u){ try{ if(!u) return ''; if(/^[a-z]+:\/\//i.test(u)) u=u.replace(/^[a-z]+:\/\//i,''); u=u.split(/[\/?#]/)[0]; return u.toLowerCase().replace(/^www\./,''); }catch(e){ return ''; } }
@@ -225,7 +225,7 @@ impl ServoIpcBackend {
         }
     }
 
-    fn adblock_domains_json() -> String {
+    pub(crate) fn adblock_domains_json() -> String {
         let domains: Vec<&str> = ADBLOCK_LIST
             .lines()
             .map(|l| l.trim().trim_start_matches('.'))
@@ -384,6 +384,10 @@ impl EngineBackend for ServoIpcBackend {
         let (tx, rx) = channel();
         self.blocked_txs.lock().unwrap().push(tx);
         rx
+    }
+
+    fn set_adblock_enabled(&self, on: bool) {
+        self.adblock_enabled.store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn describe(&self) -> String {

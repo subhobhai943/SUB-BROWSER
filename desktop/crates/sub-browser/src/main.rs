@@ -13,7 +13,9 @@
 //! Rust -> toolbar via `sub-state` (tab meta), `frame` (PNG base64),
 //! `adblock-count`, `engine-info`.
 //!
-//! Engine: `ServoIpcBackend` (crates/sub-browser/src/engine) — supervises the
+//! Engine: `spawn_backend` (crates/sub-browser/src/engine) picks
+//! `ServoIpcBackend` (default) or `EmbedBackend` (`--features embed` +
+//! setting engine=embed) behind the `EngineBackend` trait.
 //! official servoshell 0.8.0 binary per profile over loopback WebDriver.
 //! Bookmarks/history/settings: SQLite (rusqlite) beside the engine profile.
 
@@ -27,8 +29,9 @@ use tauri::utils::config::Color;
 use tauri::webview::WebviewBuilder;
 use tauri::{AppHandle, Emitter, Listener, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Rect, Url, WebviewUrl, Window, WindowEvent, Wry};
 
+use sub_browser::engine::embed::EmbedBackend;
 use sub_browser::engine::servo_ipc::ServoIpcBackend;
-use sub_browser::engine::EngineBackend;
+use sub_browser::engine::{EngineBackend, EngineError};
 use sub_browser::store::Store;
 
 const TOOLBAR_H: f64 = 96.0; // logical px chrome height (mirrors ui/index.html)
@@ -59,7 +62,7 @@ struct Frame {
 }
 
 struct AppState {
-    engine: Mutex<Option<Arc<ServoIpcBackend>>>,
+    engine: Mutex<Option<Arc<dyn EngineBackend>>>,
     tab_order: Mutex<Vec<String>>,
     active: Mutex<Option<String>>,
     counter: AtomicUsize,
@@ -78,8 +81,28 @@ struct AppState {
 static SHARED_STATE: OnceLock<Arc<AppState>> = OnceLock::new();
 static SHARED_APP: OnceLock<AppHandle<Wry>> = OnceLock::new();
 
-fn engine(_app: &AppHandle<Wry>) -> Option<Arc<ServoIpcBackend>> {
+fn engine(_app: &AppHandle<Wry>) -> Option<Arc<dyn EngineBackend>> {
     SHARED_STATE.get()?.engine.lock().unwrap().clone()
+}
+
+/// Backend selection: store setting `engine` = "embed" | "ipc" (default
+/// "ipc"). `embed` is only compilable with `--features embed`; asking for it
+/// without the feature (or when init fails) falls back to IPC so the app
+/// never bricks on engine choice. Embed numbers on this box (docs/ENGINE.md):
+/// 84 ms boot, 8 ms native-surface captures — worth flipping once the
+/// feature is on by default for Linux release builds.
+fn spawn_backend(store: Option<&Arc<Store>>) -> Result<Arc<dyn EngineBackend>, EngineError> {
+    let want_embed = store.and_then(|s| s.setting("engine")).as_deref() == Some("embed");
+    if want_embed {
+        #[cfg(feature = "embed")]
+        match EmbedBackend::spawn(PROFILE) {
+            Ok(be) => return Ok(Arc::new(be)),
+            Err(e) => eprintln!("[main] embed backend failed ({e}); falling back to IPC"),
+        }
+        #[cfg(not(feature = "embed"))]
+        eprintln!("[main] engine=embed requested but binary built without `embed` feature; using IPC");
+    }
+    ServoIpcBackend::spawn(PROFILE).map(|be| Arc::new(be) as Arc<dyn EngineBackend>)
 }
 
 fn state_of<M: Manager<R>, R: tauri::Runtime>(manager: &M) -> Arc<AppState> {
@@ -224,10 +247,10 @@ fn tab_n(label: &str) -> usize {
 fn spawn_engine_and_pump(app: AppHandle<Wry>, start_url: Url) {
     std::thread::spawn(move || {
         let state = state_of(&app);
-        // 1) Spawn engine (servoshell + webdriver ready; a few seconds).
-        match ServoIpcBackend::spawn(PROFILE) {
+        // 1) Spawn engine (embed: ms; IPC: spawn + webdriver a few seconds).
+        let store_opt = state.store.lock().unwrap().clone();
+        match spawn_backend(store_opt.as_ref()) {
             Ok(be) => {
-                let be = Arc::new(be);
                 let rx = be.blocked_event_stream();
                 *state.engine.lock().unwrap() = Some(be.clone());
                 let _ = app.emit_to("toolbar", "engine-info", serde_json::json!({

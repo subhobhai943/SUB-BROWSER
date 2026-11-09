@@ -7,8 +7,9 @@
 //!   /opt/gecko-desktop/VERDICT.md): the official Servo v0.8.0 `servoshell`
 //!   binary runs as a child process per profile and is driven over its
 //!   built-in WebDriver server on loopback.
-//! * [`embed::EmbedBackend`] — cargo feature `embed` stub for the in-process
-//!   `servo` crate (Option 1); see docs/ENGINE.md for the switch procedure.
+//! * [`embed::EmbedBackend`] — cargo feature `embed`: in-process `servo`
+//!   crate over `SoftwareRenderingContext` (SWGL). Rendering proven on the
+//!   GPU-less box; see docs/ENGINE.md for status + the headless smoke.
 
 pub mod embed;
 pub mod servo_ipc;
@@ -86,6 +87,9 @@ pub trait EngineBackend: Send + Sync {
     fn scroll(&self, tab_id: &str, dx: f64, dy: f64) -> EngineResult<()>;
     /// Subscribe to ad-block events (one channel per subscriber).
     fn blocked_event_stream(&self) -> Receiver<BlockedEvent>;
+    /// Enable/disable post-load ad filtering at runtime. Default no-op for
+    /// backends that only filter on demand (embed wires this when available).
+    fn set_adblock_enabled(&self, _on: bool) {}
     /// Human-readable engine id, e.g. "servo-ipc 0.8.0".
     fn describe(&self) -> String;
 }
